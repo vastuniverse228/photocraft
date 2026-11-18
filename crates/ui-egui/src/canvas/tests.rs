@@ -743,6 +743,13 @@ fn guides_draw_over_the_transform_preview_and_under_its_box() {
     };
     assert!(preview < guide, "the guide ({guide}) draws over the transform preview ({preview})");
     assert!(guide < frame, "the box ({frame}) draws over the guide ({guide})");
+    // #15546: the document's picture (the full canvas, without the moving layer) is in the same
+    // picture slot and must be underneath the preview, or the background covers the layer.
+    let page = Rect::from_min_max(Pos2::ZERO, pos2(400.0, 300.0));
+    let page_near = |r: Rect| (r.min - page.min).length() < 2.0 && (r.max - page.max).length() < 2.0;
+    let document = position(&|s| matches!(s, egui::Shape::Mesh(m) if page_near(m.calc_bounds())));
+    let Some(document) = document else { panic!("the document picture was not painted") };
+    assert!(document < preview, "the moving layer ({preview}) paints over the document ({document})");
 }
 
 #[test]
