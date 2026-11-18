@@ -466,6 +466,46 @@ pub(crate) fn snapshot(s: &Surface) -> Tiles {
     s.tiles().map(|(c, t)| (*c, Arc::downgrade(t))).collect()
 }
 
+/// Pixel shift when `current`'s tiles are the same allocations as `old`, moved by whole tiles.
+///
+/// [`Surface::translated`](photocraft_raster::Surface::translated) shares the tiles on a move
+/// of a multiple of the tile size. Effect maps are stored relative to the region, so that move
+/// does not need another read of the shape. `None` when any tile was rebuilt.
+pub(crate) fn tile_shift(old: &Tiles, current: &Surface) -> Option<(i32, i32)> {
+    if old.is_empty() || current.tile_count() == 0 || old.len() != current.tile_count() {
+        return None;
+    }
+    let old_min = *old.keys().min()?;
+    let new_min = current.tiles().map(|(c, _)| c).min()?;
+    let dtx = new_min.tx.checked_sub(old_min.tx)?;
+    let dty = new_min.ty.checked_sub(old_min.ty)?;
+    for (c, t) in current.tiles() {
+        let prev = TileCoord::new(c.tx.checked_sub(dtx)?, c.ty.checked_sub(dty)?);
+        let w = old.get(&prev)?;
+        if !std::ptr::eq(w.as_ptr(), Arc::as_ptr(t)) {
+            return None;
+        }
+    }
+    Some((dtx.checked_mul(photocraft_geom::TILE_SIZE)?, dty.checked_mul(photocraft_geom::TILE_SIZE)?))
+}
+
+/// Whether `content` and `mask` are the snapshots in `tiles`, shifted by the same amount as
+/// `old` to `new`. An absent source must stay absent. A source with no tiles is not a move:
+/// the caller still compares the shape.
+pub(crate) fn sources_follow(tiles: &[Option<Tiles>; 2], content: Option<&Surface>, mask: Option<&Surface>, old: Rect, new: Rect) -> bool {
+    let (Some(dx), Some(dy)) = (new.x0.checked_sub(old.x0), new.y0.checked_sub(old.y0)) else { return false };
+    if dx == 0 && dy == 0 {
+        return false;
+    }
+    let one = |prev: &Option<Tiles>, cur: Option<&Surface>| match (prev, cur) {
+        (None, None) => true,
+        (Some(prev), Some(cur)) => tile_shift(prev, cur) == Some((dx, dy)),
+        _ => false,
+    };
+    let any = tiles.iter().any(|t| t.as_ref().is_some_and(|m| !m.is_empty()));
+    any && one(&tiles[0], content) && one(&tiles[1], mask)
+}
+
 /// Union of the tiles that differ between `old` and `s`.
 pub(crate) fn damage(old: &Tiles, s: &Surface) -> Rect {
     let mut d = Rect::EMPTY;

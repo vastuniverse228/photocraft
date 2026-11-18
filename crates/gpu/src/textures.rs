@@ -27,6 +27,8 @@ pub struct Stats {
     pub tiles_shared: usize,
     /// Effect layers whose shape was (re)rendered, fully or partially.
     pub fx_shapes: usize,
+    /// Times the CPU shape was read. A pure move of unchanged tiles does not read it.
+    pub fx_shape_reads: usize,
     /// Effect map programs run (one per effect whose maps were rebuilt).
     pub fx_programs: usize,
     /// Effect-map pixels written (all stages).
