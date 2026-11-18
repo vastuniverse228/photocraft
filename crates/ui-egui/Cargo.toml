@@ -63,7 +63,10 @@ winsafe = { version = "=0.0.29", default-features = false, features = ["kernel",
 photocraft-io = { workspace = true, features = ["testgen"] }
 # egui's own default fonts in tests, so contexts made with `Context::default()` (no
 # install_fonts) can lay out text.
-egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
+egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts", "serde"] }
+# `toml::to_string` in the preferences tests. The workspace test build already enables it
+# through another crate; a `-p photocraft-ui-egui` test build does not.
+toml = { version = "1.1", default-features = false, features = ["std", "serde", "display"] }
 # Synthetic raw files for the open-time Camera Raw dialog tests.
 photocraft-raw = { workspace = true, features = ["testgen"] }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot", "eframe"] }
@@ -74,6 +77,9 @@ photocraft-testkit = { workspace = true }
 craft-psd = { workspace = true, features = ["testgen"] }
 # Isolated, self-cleaning folders for filesystem tests (the LUT folder, #6558).
 tempfile = "3"
+# The consumer the Windows adapter runs. The access-guard test feeds it the update that used to
+# close the app (#15597). Same version as the lockfile's accesskit_windows dependency.
+accesskit_consumer = "=0.39.2"
 # The framework's test helpers, e.g. the thumbnail and fx badge rects of a Layers panel row
 # (`craft::layers::testing`), and the in-memory settings files (`craft::settings::testing`).
 craft = { workspace = true, features = ["screen-testing", "settings-testing"] }

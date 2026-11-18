@@ -82,6 +82,8 @@ impl PhotocraftApp {
     /// The one setup both entry points run.
     fn setup(ctx: &egui::Context, theme: theme::AppTheme, frame: Option<craft::window::policy::Decision>) {
         crate::icons::register();
+        // Before the first frame: a menu click on Windows must not be able to close the app (#15597).
+        crate::access_guard::install(ctx);
         theme::install_runtime(ctx, frame);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, &theme);

@@ -24,6 +24,7 @@ macro_rules! tl {
         $crate::i18n::t($s)
     };
 }
+mod access_guard;
 mod brush_mode_menu;
 pub mod canvas;
 #[cfg(not(target_arch = "wasm32"))]

@@ -123,7 +123,7 @@ Detail and the next releases: [docs/roadmap.md](docs/roadmap.md).
 
 | Date | Entry |
 |---|---|
-| 2026-11-18 | Free Transform draws the moving layer over the document again (#15546) |
+| 2026-11-18 | Windows menu crash: a popup id the accessibility tree does not contain is dropped before AccessKit reads it, so Image, Edit and Layer no longer close the app (#15597). Free Transform draws the moving layer over the document again (#15546) |
 | 2026-11-02 | Layer Style: with Gradient Overlay selected, a drag on the image moves the gradient (its centre as a fraction of the layer's bounds, `params.offset`), as a drag moves a shadow (#10763) |
 | 2026-11-02 | Load Actions: Mac Roman step names with é ä ö ü Ä or ° read as Mac Roman instead of windows-1252 or Cyrillic (#10774): windows-1252's rare 0x80–0x9F letters and a lone Cyrillic letter in a Latin word no longer count as common text, the degree sign does, and the file's own Unicode text settles a word-initial rare letter and breaks exact ties toward windows-1252 or Mac Roman |
 | 2026-10-21 | Linux can use font-free Adwaita controls when System Title Bar is selected, while the integrated CSD title bar remains the default (as in #4439). Saved preferences are respected; startup and preference-dialog regressions cover both choices (#6266). |

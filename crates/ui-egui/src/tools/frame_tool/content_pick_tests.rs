@@ -1,5 +1,6 @@
 //! Frame drags pick content under the drag independently of the active layer (#13860).
 use super::*;
+use crate::canvas::{ToolEvent, tool_event};
 
 fn raster(name: &str, bounds: Rect, format: photocraft_color::PixelFormat) -> Layer {
     let mut layer = Layer::raster(name, format);
@@ -41,9 +42,9 @@ fn topmost_overlapping_content_is_independent_of_active_layer() {
 
 fn drag(app: &mut PhotocraftApp, from: [f64; 2], to: [f64; 2]) {
     let m = egui::Modifiers::NONE;
-    crate::canvas::tool_event(app, ToolEvent::Down { x: from[0], y: from[1], pressure: 1. }, m);
-    crate::canvas::tool_event(app, ToolEvent::Move { x: to[0], y: to[1], pressure: 1. }, m);
-    crate::canvas::tool_event(app, ToolEvent::Up { x: to[0], y: to[1] }, m);
+    tool_event(app, ToolEvent::Down { x: from[0], y: from[1], pressure: 1. }, m);
+    tool_event(app, ToolEvent::Move { x: to[0], y: to[1], pressure: 1. }, m);
+    tool_event(app, ToolEvent::Up { x: to[0], y: to[1] }, m);
 }
 
 #[test]
