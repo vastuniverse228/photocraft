@@ -174,6 +174,10 @@ pub(super) fn rules() -> Vec<SettingRule> {
     ] {
         tweak(&mut rules, path, |r| r.custom());
     }
+    // Appearance Mode is a custom row whose page already names itself. A second label from the
+    // settings row reads "Appearance Mode: Appearance Mode:" (#15553). An empty label draws the
+    // custom row with no field caption. The interface-page test counts three names without this.
+    tweak(&mut rules, "interface.appearanceMode", |r| r.label(""));
     // The favourite fonts are the user's library, not a Type setting.
     tweak(&mut rules, "type.favoriteFonts", |r| r.keep_on_reset());
 

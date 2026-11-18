@@ -350,6 +350,7 @@ what an agent can't finish alone.
 - **Estimate:** 60–110 h.
 
 ### G9. Panels, preferences and workspace
+- **2026-11-18 (#15553):** Preferences › Interface no longer captions Appearance Mode twice. The page already names that row; the settings row's own label is empty, so the custom row has no second caption.
 - **Progress (2026-10-21):** adjustment clipping is reachable above the Properties editor in a compact dock (#5231), with all-theme layout coverage and 8/16/32-bit scope and undo/redo tests. The normal adjustment-layer scope and remaining estimate stay unchanged.
 - **Progress (2026-10-16, #3222):** UI scale presets are complete: 75–125% in 5% steps,
   then 150–300%, remembered through preferences (UI-217-9).
