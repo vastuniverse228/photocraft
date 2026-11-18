@@ -309,14 +309,16 @@ fn preferences_preview_does_not_commit_until_applied_and_survives_reload() {
         let text = drawn_text(&h);
         let fr = lang("fr");
         assert!(text.iter().any(|text| text == tr(fr, "Appearance")), "the draft language must translate the visible window");
-        let cancel = tr(fr, "Cancel");
+        // The page rows take the draft language. The framework's OK, Cancel and Apply follow the
+        // window's language, which stays the committed one until Apply.
+        let cancel = tr(Lang::EN, "Cancel");
         let button = text.iter().any(|text| text == cancel) || h.query_all_by_label(cancel).next().is_some();
-        assert!(button, "the window buttons must preview the language too");
+        assert!(button, "the window buttons stay in the committed language");
         assert!(text.iter().any(|text| text == "File"), "the main window keeps its committed language");
         assert_eq!(h.state().session.prefs().interface.language, "auto");
         assert_eq!(current(), Lang::EN, "preview must not leak to the main window");
         // Cancel drops the draft and the preview.
-        h.get_by_label(tr(fr, "Cancel")).click();
+        h.get_by_label(cancel).click();
         h.run_steps(3);
         assert!(!window_open(h.state()));
         assert_eq!(h.state().session.prefs().interface.language, "auto");

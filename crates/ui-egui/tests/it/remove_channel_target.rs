@@ -14,18 +14,15 @@ fn run(s: &mut Session, id: &str, p: &str) {
     s.execute(id, p.parse().unwrap()).unwrap();
 }
 
-/// A document point on an opaque pixel of `id`, or the historical click when the layer has no pixels.
-fn glyph_point(s: &Session, id: LayerId) -> (f64, f64) {
+/// The middle of the type layer's shown pixels, which is where the Type tool's hit test lands.
+fn glyph_point(s: &Session, id: LayerId) -> Option<(f64, f64)> {
     let doc = &s.active().unwrap().doc;
-    let Some(surface) = doc.layer(id).and_then(|layer| layer.surface()) else { return (4.0, 14.0) };
-    let pixels = surface.read_region(doc.bounds());
-    let width = doc.bounds().width().max(1) as usize;
-    for (index, pixel) in pixels.chunks(4).enumerate() {
-        if pixel.get(3).is_some_and(|alpha| *alpha > 0.2) {
-            return ((index % width) as f64 + 0.5, (index / width) as f64 + 0.5);
-        }
+    let photocraft_doc::LayerContent::Text(text) = &doc.layer(id)?.content else { return None };
+    let bounds = text.cache.as_ref()?.content_bounds();
+    if bounds.is_empty() {
+        return None;
     }
-    (4.0, 14.0)
+    Some(((f64::from(bounds.x0) + f64::from(bounds.x1)) / 2.0, (f64::from(bounds.y0) + f64::from(bounds.y1)) / 2.0))
 }
 
 fn pixels(s: &Session, doc: usize, id: LayerId) -> Vec<f32> {
@@ -61,9 +58,6 @@ fn probe(input: Input) {
     run(&mut a, "channel.target", r#"{"channel":"red"}"#);
     let b = a.documents()[1].doc.clone();
     let text_before = a.documents()[0].doc.layer(text).unwrap().clone();
-    // The glyph's own pixel, not a fixed point: the type face's metrics differ by platform, and a
-    // miss leaves the pixel layer selected.
-    let (hx, hy) = glyph_point(&a, text);
 
     // The inline Red-only Remove is the oracle.
     let mut inline = Session::new();
@@ -80,7 +74,7 @@ fn probe(input: Input) {
         // The app shares the harness's context, which is where the control channel's pointer input arrives.
         PhotocraftApp::with_context(cc.egui_ctx.clone(), a, Services::default())
     });
-    h.run_steps(4);
+    h.run_steps(6);
 
     let job = match h.state_mut().session.start("paint.remove", REMOVE.parse().unwrap()).unwrap() {
         Started::Job(id) => id,
@@ -89,11 +83,14 @@ fn probe(input: Input) {
     match input {
         Input::None => {}
         Input::ControlPointer => {
+            let (hx, hy) = glyph_point(&h.state().session, text).expect("the type layer has shown pixels");
             let ctx = h.ctx.clone();
             let params = format!(r#"{{"tool":"type","events":[{{"kind":"down","x":{hx},"y":{hy}}}]}}"#);
             let (req, _rx) = control::ControlRequest::new("ui.pointer", params.parse().unwrap());
-            let _ = control::handle(h.state_mut(), &ctx, &req);
-            h.run_steps(2);
+            let reply = control::handle(h.state_mut(), &ctx, &req);
+            let accepted = matches!(&reply, control::Reply::Done(value) if value.get("ok").and_then(|v| v.as_bool()) == Some(true));
+            assert!(accepted, "the canvas took the pointer");
+            h.run_steps(4);
         }
     }
     let selected = if matches!(input, Input::None) { target } else { text };
