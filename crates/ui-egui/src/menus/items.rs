@@ -61,8 +61,12 @@ pub struct MenuModel {
 
 impl MenuModel {
     /// The English label of the row that runs `command`.
+    ///
+    /// Appearance and Language rows share one command id and carry the choice in the parameters,
+    /// so those labels are stored under [`CommandRef::key`]. A catalogue row has no parameters
+    /// and is stored under the id, which is that key.
     pub(super) fn english_label(&self, command: &CommandRef) -> Option<String> {
-        self.english.get(&command.id).cloned()
+        self.english.get(&command.key()).or_else(|| self.english.get(&command.id)).cloned()
     }
 
     /// The English title of a menu or submenu shown as `title`.
@@ -349,6 +353,17 @@ fn translate_titles(bar: &mut MenuBar, lang: crate::i18n::Lang, english: &mut Ha
     }
 }
 
+/// Records each item's English label under its command key. `shown` and `english_items` are the
+/// same menu, the second built with English words, so a translated row stays findable by the
+/// English name. Appearance and Language rows share a command id, and the key includes the choice.
+fn remember_english(shown: &[Node], english_items: &[Node], english: &mut HashMap<String, String>) {
+    for (node, source) in shown.iter().zip(english_items.iter()) {
+        if let (Node::Item(item), Node::Item(english_item)) = (node, source) {
+            english.insert(item.command.key(), english_item.label.clone());
+        }
+    }
+}
+
 /// Window › Workspace's neighbour: the Appearance and Language submenus go after it. The layouts
 /// move them to the Mac app menu by their roles.
 fn put_in_window(bar: &mut MenuBar, node: Node) {
@@ -382,12 +397,17 @@ fn build(app: &PhotocraftApp, state: u64) -> MenuModel {
     // The labels of the two menus come from the language the rest of the model uses.
     let i18n = crate::i18n::framework_i18n();
     let words = Words::from_i18n(i18n.clone(), i18n.from_code(lang.code()).unwrap_or_else(|| i18n.system_lang()));
-    put_in_window(&mut bar, crate::prefs_ui::theme_menu(app).submenu(&words.set::<ThemeLabels>()));
+    let theme = crate::prefs_ui::theme_menu(app);
+    let theme_labels = words.set::<ThemeLabels>();
+    remember_english(&theme.items(&theme_labels), &theme.items(&Words::english().set::<ThemeLabels>()), &mut english);
+    put_in_window(&mut bar, theme.submenu(&theme_labels));
     // Production shows Language only in the macOS app menu.
     let pref = &app.session.prefs().interface.language;
     let choice = if pref == "auto" { LanguageChoice::Automatic } else { LanguageChoice::Code(pref.clone()) };
-    let language = LanguageMenu::from_i18n(i18n, choice).submenu(&words.set::<LanguageLabels>()).platforms(Platforms::MAC);
-    put_in_window(&mut bar, language);
+    let language = LanguageMenu::from_i18n(i18n, choice);
+    let language_labels = words.set::<LanguageLabels>();
+    remember_english(&language.items(&language_labels), &language.items(&Words::english().set::<LanguageLabels>()), &mut english);
+    put_in_window(&mut bar, language.submenu(&language_labels).platforms(Platforms::MAC));
     let label = |s: &'static str| crate::i18n::tr(lang, s).to_string();
     let keys = |chord: &Chord| craft::ui::runtime::commands::holder(app.ctx(), chord);
     let options = LayoutOptions::new(crate::native_menu::APP_NAME).label(&label).keys(&keys);

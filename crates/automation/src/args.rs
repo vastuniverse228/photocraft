@@ -42,8 +42,13 @@ pub struct AutomationArgs {
     pub automation_write_root: Option<PathBuf>,
 }
 
+/// A root flag given as an empty string.
+#[derive(Debug, thiserror::Error)]
+#[error("root needs a non-empty directory")]
+struct EmptyRoot;
+
 fn root_path() -> impl TypedValueParser<Value = PathBuf> {
-    OsStringValueParser::new().try_map(|value: OsString| if value.is_empty() { Err("root needs a non-empty directory") } else { Ok(PathBuf::from(value)) })
+    OsStringValueParser::new().try_map(|value: OsString| if value.is_empty() { Err(EmptyRoot) } else { Ok(PathBuf::from(value)) })
 }
 
 impl AutomationArgs {

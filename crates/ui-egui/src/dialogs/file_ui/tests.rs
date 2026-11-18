@@ -57,6 +57,17 @@ fn print_fields(app: &mut PhotocraftApp, id: DialogId) -> &mut DialogFields {
     app.framework.dialogs.get_mut_by_id::<HostedPrint>(id).expect("Print is open").fields_mut()
 }
 
+#[test]
+fn print_dialog_seeds_the_remembered_printer() {
+    let mut app = app();
+    app.session.prefs.edit(|p| {
+        p.dialogs.insert(photocraft_engine::print_cmds::REMEMBERED.into(), json!({"printer": "Saved printer", "printerSettings": "0011"}));
+    });
+    let id = open_print(&mut app);
+    let fields = print_fields(&mut app, id);
+    assert_eq!((field(fields, "printer"), field(fields, "printerSettings")), (json!("Saved printer"), json!("0011")));
+}
+
 #[cfg(windows)]
 #[test]
 fn print_dialog_keeps_saved_settings_when_the_cached_printer_list_is_empty() {

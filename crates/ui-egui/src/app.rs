@@ -289,6 +289,8 @@ impl eframe::App for PhotocraftApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // After the test harness's panic-on-missing-glyph policy, and before any text is laid out.
+        theme::keep_missing_glyphs_visible(ui.ctx());
         #[cfg(test)]
         if let Some(mut body) = self.framework.test_body.take() {
             body(ui, self);

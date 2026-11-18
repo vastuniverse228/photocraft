@@ -79,6 +79,17 @@ fn title_bar_pref(prefs: &photocraft_engine::prefs::Preferences) -> TitleBarPref
     if prefs.interface.system_title_bar { TitleBarPref::System } else { TitleBarPref::Integrated }
 }
 
+/// A Preferences automation folder that cannot be used. The launch continues; the warning says why.
+#[derive(Debug, thiserror::Error)]
+enum PreferenceFolder {
+    /// The stored path depends on the folder the app was started from.
+    #[error("`{0}` is not an absolute path")]
+    NotAbsolute(String),
+    /// The folder could not be opened as a capability.
+    #[error("{0}")]
+    Open(photocraft_automation::AutomationError),
+}
+
 /// The automation roots: `--automation-read-root` / `--automation-write-root` (or their
 /// variables) win; a direction without one takes Preferences › AI Integrations' folder. A flag's
 /// root that can't be opened stops the launch (exit status 2) as before. A preference's root that
@@ -99,11 +110,11 @@ fn automation_workspace(
             continue;
         };
         let opened = if !root.is_absolute() {
-            Err(format!("`{}` is not an absolute path", root.display()))
+            Err(PreferenceFolder::NotAbsolute(root.display().to_string()))
         } else if read {
-            workspace.with_read_root(&root).map_err(|e| e.to_string())
+            workspace.with_read_root(&root).map_err(PreferenceFolder::Open)
         } else {
-            workspace.with_write_root(&root).map_err(|e| e.to_string())
+            workspace.with_write_root(&root).map_err(PreferenceFolder::Open)
         };
         match opened {
             Ok(w) => workspace = w,

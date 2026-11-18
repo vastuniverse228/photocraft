@@ -1004,6 +1004,14 @@ pub fn install_runtime(ctx: &egui::Context, frame: Option<craft::window::policy:
     let fonts = ui_fonts(ctx, crate::i18n::current().code());
     crate::app::framework::install(ctx, &fonts, frame);
     install_font_stack(ctx, &fonts);
+    keep_missing_glyphs_visible(ctx);
+}
+
+/// A character no bundled face covers draws a box. The test harness sets a panic policy after the
+/// app is built and before the first frame, and a language name such as Tamil is not in the
+/// bundled faces. That panic aborts layout. Each frame sets the box policy again, after the harness.
+pub(crate) fn keep_missing_glyphs_visible(ctx: &egui::Context) {
+    ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Tofu);
 }
 
 /// Every face of `fonts` at Interface › UI Font Size, egui's default faces the framework adds
