@@ -83,9 +83,13 @@ fn probe(input: Input) {
     match input {
         Input::None => {}
         Input::ControlPointer => {
-            let (hx, hy) = glyph_point(&h.state().session, text).expect("the type layer has shown pixels");
             let ctx = h.ctx.clone();
-            let params = format!(r#"{{"tool":"type","events":[{{"kind":"down","x":{hx},"y":{hy}}}]}}"#);
+            // Fit first so the view the pointer converts through is the one the next frames keep.
+            let (fit, _rx) = control::ControlRequest::new("ui.set", r#"{"fit": true}"#.parse().unwrap());
+            let _ = control::handle(h.state_mut(), &ctx, &fit);
+            h.run_steps(2);
+            let (hx, hy) = glyph_point(&h.state().session, text).expect("the type layer has shown pixels");
+            let params = format!(r#"{{"tool":"type","events":[{{"kind":"down","x":{hx},"y":{hy}}},{{"kind":"up","x":{hx},"y":{hy}}}]}}"#);
             let (req, _rx) = control::ControlRequest::new("ui.pointer", params.parse().unwrap());
             let reply = control::handle(h.state_mut(), &ctx, &req);
             let accepted = matches!(&reply, control::Reply::Done(value) if value.get("ok").and_then(|v| v.as_bool()) == Some(true));
