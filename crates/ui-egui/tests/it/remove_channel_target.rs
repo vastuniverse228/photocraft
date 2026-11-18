@@ -14,6 +14,20 @@ fn run(s: &mut Session, id: &str, p: &str) {
     s.execute(id, p.parse().unwrap()).unwrap();
 }
 
+/// A document point on an opaque pixel of `id`, or the historical click when the layer has no pixels.
+fn glyph_point(s: &Session, id: LayerId) -> (f64, f64) {
+    let doc = &s.active().unwrap().doc;
+    let Some(surface) = doc.layer(id).and_then(|layer| layer.surface()) else { return (4.0, 14.0) };
+    let pixels = surface.read_region(doc.bounds());
+    let width = doc.bounds().width().max(1) as usize;
+    for (index, pixel) in pixels.chunks(4).enumerate() {
+        if pixel.get(3).is_some_and(|alpha| *alpha > 0.2) {
+            return ((index % width) as f64 + 0.5, (index / width) as f64 + 0.5);
+        }
+    }
+    (4.0, 14.0)
+}
+
 fn pixels(s: &Session, doc: usize, id: LayerId) -> Vec<f32> {
     let d = &s.documents()[doc].doc;
     d.layer(id).unwrap().surface().unwrap().read_region(d.bounds())
@@ -47,6 +61,9 @@ fn probe(input: Input) {
     run(&mut a, "channel.target", r#"{"channel":"red"}"#);
     let b = a.documents()[1].doc.clone();
     let text_before = a.documents()[0].doc.layer(text).unwrap().clone();
+    // The glyph's own pixel, not a fixed point: the type face's metrics differ by platform, and a
+    // miss leaves the pixel layer selected.
+    let (hx, hy) = glyph_point(&a, text);
 
     // The inline Red-only Remove is the oracle.
     let mut inline = Session::new();
@@ -73,7 +90,8 @@ fn probe(input: Input) {
         Input::None => {}
         Input::ControlPointer => {
             let ctx = h.ctx.clone();
-            let (req, _rx) = control::ControlRequest::new("ui.pointer", r#"{"tool":"type","events":[{"kind":"down","x":4,"y":14}]}"#.parse().unwrap());
+            let params = format!(r#"{{"tool":"type","events":[{{"kind":"down","x":{hx},"y":{hy}}}]}}"#);
+            let (req, _rx) = control::ControlRequest::new("ui.pointer", params.parse().unwrap());
             let _ = control::handle(h.state_mut(), &ctx, &req);
             h.run_steps(2);
         }

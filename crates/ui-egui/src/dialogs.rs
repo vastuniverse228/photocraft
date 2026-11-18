@@ -506,7 +506,8 @@ pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context, id: DialogId) -> Re
         return Err(format!("no dialog {}", id.value()));
     }
     // Automation confirming a dialog that stands for a command is judged as that command, whichever way the answer
-    // arrives (a control request or synthetic input).
+    // arrives (a control request or synthetic input). The control channel is native only.
+    #[cfg(not(target_arch = "wasm32"))]
     if app.automation_input
         && let Some(authorize) = app.services.automation_command.as_ref()
         && let Some((command, params)) = crate::control::dialogs::hosted_command(app, id)
@@ -514,6 +515,7 @@ pub fn confirm(app: &mut PhotocraftApp, ctx: &egui::Context, id: DialogId) -> Re
         authorize(&command, &params)?;
     }
     // Synthetic input answering Save on the unsaved-changes prompt is judged as `file.save`, as a control answer is.
+    #[cfg(not(target_arch = "wasm32"))]
     if app.automation_input && crate::control::dialogs::is_save_answer(app, id) {
         crate::discard_ui::authorize_save(app, false)?;
     }

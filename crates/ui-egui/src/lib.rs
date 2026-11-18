@@ -29,6 +29,16 @@ mod brush_mode_menu;
 pub mod canvas;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
+/// The browser has no control channel. The workspaces still call `workspace_ui`; it refuses.
+#[cfg(target_arch = "wasm32")]
+pub mod control {
+    pub mod dialogs {
+        /// `{ui}` on a hosted workspace. The browser does not drive those workspaces this way.
+        pub(crate) fn workspace_ui(_: &mut crate::PhotocraftApp, _: &egui::Context, key: &str, _: &serde_json::Value) -> Result<serde_json::Value, String> {
+            Err(format!("`{key}` cannot be driven in the browser"))
+        }
+    }
+}
 pub mod dialogs;
 pub mod dock;
 pub(crate) mod edit_session;
@@ -77,6 +87,8 @@ pub use craft::window::{
     Prefix,
     policy::{self as window_policy, Backend, Decision, Frame, TitleBarPref},
 };
+#[cfg(target_arch = "wasm32")]
+pub use file_dialog::{FileDialogAnswer, FileDialogReply, FileDialogRequest};
 pub use file_open::OsEvent;
 pub use state::{Tool, UiState};
 
