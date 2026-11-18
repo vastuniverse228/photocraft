@@ -493,6 +493,10 @@ pub type RightButtonDownFn = Box<dyn Fn() -> bool + Send + Sync>;
 /// Which end of the pen is in use, `Some(true)` = eraser, `None` = no pen ([`Services::pen_end`]).
 pub type PenEndFn = Box<dyn Fn() -> Option<bool> + Send + Sync>;
 
+/// Windows Ink tilt and twist the pointer sample does not carry: `[tilt_x, tilt_y, rotation]`
+/// in degrees, `None` when no pen is in range ([`Services::pen_pose`]).
+pub type PenPoseFn = Box<dyn Fn() -> Option<[f32; 3]> + Send + Sync>;
+
 /// Polls the platform's optional WinTab packet queue into the app's stylus feed (Windows), with
 /// whether the app window is focused (to re-assert WinTab overlap priority on activation).
 pub type TabletPollFn = Box<dyn FnMut(bool)>;
@@ -636,6 +640,8 @@ pub struct Services {
     /// Which end of the pen is in use, where the platform reports it outside the stylus feed
     /// (Windows: the feed carries no pen samples there). Read for the eraser-end tool switch.
     pub pen_end: Option<PenEndFn>,
+    /// Windows Ink tilt and twist, merged onto a pointer sample that has none (winit drops them).
+    pub pen_pose: Option<PenPoseFn>,
     /// WinTab packet poll (Windows with Windows Ink disabled; see `photocraft_tablet::wintab`).
     pub tablet_poll: Option<TabletPollFn>,
     /// The persistent brush preset store, loading in the background (desktop; see

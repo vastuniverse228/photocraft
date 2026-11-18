@@ -3,7 +3,7 @@ name = "photocraft-tablet"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pen tablet pressure, tilt, rotation and eraser end on macOS (AppKit), Linux X11 (XInput2) and Windows (WinTab), and barrel button and eraser end on Windows (Windows Ink)"
+description = "Pen tablet pressure, tilt, rotation and eraser end on macOS (AppKit), Linux X11 (XInput2) and Windows (WinTab and Windows Ink), and the barrel button on Windows Ink"
 
 # The one isolated `unsafe` helper crate (see AGENTS.md, Never crash): the AppKit event
 # monitor on macOS and the WH_GETMESSAGE and WH_CALLWNDPROC pointer hooks on Windows need

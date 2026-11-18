@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-11-08 · **Change:** minor (Graphics Adapter choice on Linux, #1885; Camera Raw's preview develops its per-pixel stages on the GPU; GPU, Wayland (tilt and eraser end via Xwayland) and monitor-profile rows refreshed against main; Windows: flipping the pen to its eraser end selects the Eraser with Windows Ink on, #2285, not yet confirmed on a pen with an eraser end; previously minor: optional WinTab backend on Windows: pressure and the eraser end; tilt on devices with orientation axes; rotation only with a pen and driver that report twist, with Windows Ink off) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-11-18 · **Change:** minor (Windows Ink tilt and twist from POINTER_PEN_INFO, not yet checked on a pen; Graphics Adapter choice on Linux, #1885; Camera Raw's preview develops its per-pixel stages on the GPU; GPU, Wayland (tilt and eraser end via Xwayland) and monitor-profile rows refreshed against main; Windows: flipping the pen to its eraser end selects the Eraser with Windows Ink on, #2285, not yet confirmed on a pen with an eraser end; previously minor: optional WinTab backend on Windows: pressure and the eraser end; tilt on devices with orientation axes; rotation only with a pen and driver that report twist, with Windows Ink off) · **Target:** Adobe Photoshop 2026
 
 Each hardware feature Photoshop 2026 (27.11.0) uses, per platform, against PhotoCraft. Photoshop
 side: its bundle (Metal and OpenCL paths, "Precise Color Management for HDR Display" and EDR
@@ -9,7 +9,7 @@ strings, Touch Bar resources, pen pressure/tilt strings) and Adobe's GPU FAQ. Ph
 `engine/src/display_color.rs`, `apps/photocraft/src/monitor_profile.rs`.
 
 **Summary (estimated):** ~50% ready. GPU compositing and colour-managed display are solid; pen
-input is uneven by platform (the default Windows Ink path lacks tilt and rotation, Wayland is
+input is uneven by platform (the default Windows Ink path now keeps tilt and twist from `POINTER_PEN_INFO`, not yet checked on a physical pen; Wayland is
 broken; the opt-in WinTab path on Windows supplies tilt only on devices that report orientation
 axes, and rotation only when the pen and driver report twist) and there is no HDR
 output. Remaining: 80–150 h (gap G12). Human: tablets (Wacom, XP-Pen, Huion) on each OS and an
@@ -33,8 +33,8 @@ HDR display to verify.
 | Feature | Photoshop | macOS | Windows | Linux X11 | Linux Wayland | Web |
 |---|---|---|---|---|---|---|
 | Pressure | yes | yes (AppKit monitor) | yes (WM_POINTER), jumpy (#2046) | yes (XInput2) | via Xwayland only; GNOME 50 pen doesn't click (#2622); KDE fixed in 0.6.0 (#2297, #1070) | yes |
-| Tilt | yes | yes | **no** (WinTab: with orientation axes, opt-in) | yes | via Xwayland only (native Wayland: no) | yes |
-| Barrel rotation | yes | yes (not applied to tip angle, #1301) | no (WinTab: with a twist-reporting pen and driver, opt-in) | partial | no | yes (twist) |
+| Tilt | yes | yes | yes with Windows Ink from `POINTER_PEN_INFO` (not yet checked on a pen); WinTab: with orientation axes, opt-in | yes | via Xwayland only (native Wayland: no) | yes |
+| Barrel rotation | yes | yes (not applied to tip angle, #1301) | yes with Windows Ink when the packet sets `PEN_MASK_ROTATION` (not yet checked on a pen); WinTab: with a twist-reporting pen and driver, opt-in | partial | no | yes (twist) |
 | Eraser end | yes | yes | yes with Windows Ink, not yet confirmed on hardware (#2285); WinTab: yes (opt-in) | partial | partial, via Xwayland only (native Wayland: no) | partial |
 | WinTab driver mode | yes | – | yes (opt-in; Windows Ink off) | – | – | – |
 | Pressure curve | Windows Ink / driver | global curve in Preferences (#2195) | same | same | same | same |
@@ -42,8 +42,9 @@ HDR display to verify.
 Windows: the opt-in WinTab backend (`tools.tabletInput = "winTab"`, with Windows Ink turned off
 in the tablet utility) supplies pressure and the eraser end, tilt only on devices that report
 orientation axes, and rotation only when the pen and driver report twist (pressure-only devices
-get neutral tilt and rotation). The default Windows Ink path still lacks tilt and
-rotation; its eraser end comes from the pointer hooks (#2285).
+get neutral tilt and rotation). The default Windows Ink path now keeps tilt and twist from
+the same `GetPointerPenInfo` call as the barrel and eraser flags (not yet checked on a pen);
+its eraser end comes from the pointer hooks (#2285).
 
 ## Displays and colour
 
@@ -71,6 +72,7 @@ rotation; its eraser end comes from the pointer hooks (#2285).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Windows Ink: tilt and twist from `POINTER_PEN_INFO` fill a pointer sample that has none. Not yet checked on a pen |
 | 2026-11-06 | minor | Windows eraser end: the pointer hooks read `PEN_FLAG_INVERTED` and the Eraser switch follows it (Windows Ink on; #2285) |
 | 2026-11-05 | minor | Optional WinTab driver mode on Windows: pressure and eraser; tilt with orientation axes; rotation with a twist-reporting pen, with Windows Ink off |
 | 2026-10-28 | minor | Build GPU compositor pipelines in the background; benchmark baseline pending (#9157) |

@@ -721,6 +721,12 @@ fn main() -> eframe::Result {
             tablet::spawn_x11(&app.stylus.feed, display);
             app.services.right_button_down = tablet::right_button_service();
             app.services.pen_end = tablet::pen_end_service();
+            // Windows Ink: winit forwards pressure and drops tilt and twist. The pointer hook
+            // keeps them. WinTab writes a full sample into the feed, so it does not use this.
+            #[cfg(target_os = "windows")]
+            if app.session.prefs().tools.tablet_input != photocraft_engine::prefs::TabletInput::WinTab {
+                app.services.pen_pose = tablet::pen_pose_service();
+            }
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
             app.open_paths(&files);
             if !unreadable_paths.is_empty() {

@@ -452,7 +452,8 @@ what an agent can't finish alone.
 ## Hardware gaps
 
 ### G12. Pen tablets and display hardware
-- **Missing:** tilt and rotation on Windows (pressure only, via WM_POINTER; no WinTab); native
+- **2026-11-18:** Windows Ink tilt and twist. `GetPointerPenInfo` already supplied `tiltX`, `tiltY` and `rotation`; the pointer hook kept only the barrel and eraser flags. Those degrees now ride on a pointer sample that has none (WinTab still writes its own sample and is not overlaid). Not yet checked on a physical pen.
+- **Missing:** native
   Wayland tablet-v2 (#79; the pen does not click on GNOME 50, #2622, KDE #2297); HDR/EDR output
   (Photoshop has "Precise Color Management for HDR Display"); monitor profile detection off
   macOS and live profile changes; Touch Bar (macOS Intel only, low value); 3D mice.

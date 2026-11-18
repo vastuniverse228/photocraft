@@ -278,3 +278,16 @@ fn the_eraser_end_ends_the_artboard_placing_mode() {
     assert_eq!(app.ui.tool, Tool::Artboard);
     assert!(!app.ui.artboard_tool.adding);
 }
+
+#[test]
+fn a_platform_pose_fills_tilt_the_pointer_sample_does_not_carry() {
+    let bare = PointerSample::new(0.4);
+    let filled = apply_platform_pose(bare, Some([30.0, -10.0, 45.0]));
+    assert!((filled.tilt[0].to_degrees() - 30.0).abs() < 1e-4);
+    assert!((filled.tilt[1].to_degrees() - -10.0).abs() < 1e-4);
+    assert!((filled.rotation.to_degrees() - 45.0).abs() < 1e-4);
+    let already = reading(PenSample { pressure: 0.4, tilt_x: 12.0, tilt_y: 0.0, rotation: 0.0, eraser: false });
+    let kept = apply_platform_pose(already, Some([30.0, -10.0, 45.0]));
+    assert!((kept.tilt[0].to_degrees() - 12.0).abs() < 1e-3, "a sample that already has tilt is left alone");
+    assert_eq!(apply_platform_pose(bare, None).tilt, [0.0, 0.0]);
+}

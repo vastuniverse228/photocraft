@@ -99,6 +99,13 @@ pub fn pen_end_service() -> Option<photocraft_ui_egui::PenEndFn> {
     Some(Box::new(photocraft_tablet::windows::take_pen_end))
 }
 
+/// Windows Ink tilt and twist, in degrees. Installed only while WinTab is off: WinTab already
+/// writes tilt into the stylus feed, and a second source would cover an upright pen.
+#[cfg(target_os = "windows")]
+pub fn pen_pose_service() -> Option<photocraft_ui_egui::PenPoseFn> {
+    Some(Box::new(|| photocraft_tablet::windows::pen_pose().map(|pose| [pose.tilt_x, pose.tilt_y, pose.rotation])))
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn pen_end_service() -> Option<photocraft_ui_egui::PenEndFn> {
     None
