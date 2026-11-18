@@ -862,3 +862,77 @@ fn a_type_layer_without_a_writable_tysh_drops_its_imported_block() {
     assert!(!written.blocks.iter().any(|b| b.key == *b"TySh"), "the stale imported TySh is dropped");
     assert!(warnings.iter().any(|w| w.contains("no TySh data")), "{warnings:?}");
 }
+
+/// A file PhotoCraft writes — pixel layers, a mask, blend modes, a type layer as pixels plus
+/// `TySh`, and an adjustment — opens again with those parts intact.
+#[test]
+fn layers_masks_blend_modes_text_and_adjustments_round_trip() {
+    use photocraft_color::BlendMode;
+    use photocraft_geom::Rect;
+    let q = |n: f32| n / 255.0;
+    let size = photocraft_geom::Size::new(16, 12);
+    let mut doc = Document::new("round trip", size, ColorMode::Rgb, SampleType::U8);
+    let mut pixels = Surface::new(doc.pixel_format());
+    let paint_px = [q(51.0), q(102.0), q(204.0), q(128.0)];
+    pixels.fill_rect(Rect::new(1, 2, 8, 9), &paint_px);
+    let mut masked = Layer::new("Paint", LayerContent::Raster(pixels));
+    masked.blend = BlendMode::Multiply;
+    masked.opacity = q(153.0);
+    masked.clipped = true;
+    let mut mask = LayerMask::reveal_all();
+    mask.surface.fill_rect(Rect::new(2, 2, 6, 7), &[0.0]);
+    mask.density = q(128.0);
+    mask.feather = 2.0;
+    mask.enabled = false;
+    masked.mask = Some(mask);
+    doc.layers.push(masked);
+
+    // Brightness and contrast are Photoshop's integer scales (about -150..150 and -100..100),
+    // not 0..1. A fraction rounds to 0 in the `brit` block.
+    let adjustment = photocraft_doc::Adjustment::BrightnessContrast { brightness: 20.0, contrast: -10.0, legacy: false };
+    let mut adj = Layer::new("Brighten", LayerContent::Adjustment(adjustment.clone()));
+    adj.blend = BlendMode::Screen;
+    adj.opacity = q(204.0);
+    doc.layers.push(adj);
+
+    let mut cache = Surface::new(doc.pixel_format());
+    let ink = [q(26.0), q(51.0), q(77.0), 1.0];
+    cache.fill_rect(Rect::new(3, 3, 7, 6), &ink);
+    let text = photocraft_doc::TextLayer { text: "Hello".into(), size_pt: 18.0, cache: Some(cache.clone()), ..Default::default() };
+    let mut title = Layer::new("Title", LayerContent::Text(text));
+    title.blend = BlendMode::Overlay;
+    doc.layers.push(title);
+
+    let (file, warnings) = document_to_psd_with(&doc, &PsdExportOptions::default()).unwrap();
+    assert!(warnings.iter().all(|w| !w.contains("no TySh")), "{warnings:?}");
+    let written = file.layer_info.as_ref().unwrap().layers.iter().find(|l| l.name == b"Title").unwrap();
+    assert!(written.blocks.iter().any(|b| b.key == *b"TySh"), "type is pixels plus TySh");
+    let back = crate::import("round.psd", &file.to_bytes().unwrap()).unwrap();
+    assert!(back.warnings.iter().all(|w| !w.contains("could not")), "{:?}", back.warnings);
+    let back = back.document;
+
+    let paint = back.layers.iter().find(|l| l.name == "Paint").expect("Paint");
+    assert_eq!(paint.blend, BlendMode::Multiply);
+    assert!((paint.opacity - q(153.0)).abs() < 1.0 / 512.0, "{}", paint.opacity);
+    assert!(paint.clipped);
+    let mask = paint.mask.as_ref().expect("mask");
+    assert!(!mask.enabled);
+    assert!((mask.density - q(128.0)).abs() < 1.0 / 512.0, "{}", mask.density);
+    assert!((mask.feather - 2.0).abs() < 0.01, "{}", mask.feather);
+    let hole = mask.surface.read_region(Rect::new(2, 2, 6, 7));
+    assert!(hole.chunks(mask.surface.channels()).all(|p| p[0] == 0.0), "{hole:?}");
+    assert_eq!(paint.surface().unwrap().read_region(Rect::new(1, 2, 8, 9)), paint_px.repeat(7 * 7));
+
+    let bright = back.layers.iter().find(|l| l.name == "Brighten").expect("Brighten");
+    assert_eq!(bright.blend, BlendMode::Screen);
+    assert!((bright.opacity - q(204.0)).abs() < 1.0 / 512.0, "{}", bright.opacity);
+    assert_eq!(bright.content, LayerContent::Adjustment(adjustment));
+
+    let title = back.layers.iter().find(|l| l.name == "Title").expect("Title");
+    assert_eq!(title.blend, BlendMode::Overlay);
+    let LayerContent::Text(t) = &title.content else { panic!("{:?}", title.content) };
+    assert_eq!(t.text, "Hello");
+    assert_eq!(t.size_pt, 18.0);
+    let got = t.cache.as_ref().expect("rasterized type");
+    assert_eq!(got.read_region(Rect::new(3, 3, 7, 6)), ink.repeat(4 * 3));
+}
