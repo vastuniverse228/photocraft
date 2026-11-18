@@ -513,7 +513,9 @@ pub struct Services {
     pub files: Option<std::sync::Arc<dyn craft::host::Files>>,
     /// The main-thread side of the native file panels, pumped by the app.
     pub file_panels: Option<craft::dialogs::service::FilePanels>,
-    /// The opened settings store and what opening it reported; `None` in the web build.
+    /// The opened settings store and what opening it reported. Native only: the store's path
+    /// types are not in the web build, which keeps preferences in browser storage instead.
+    #[cfg(not(target_arch = "wasm32"))]
     pub settings: Option<(craft::settings::SettingsStore<photocraft_engine::prefs::SavedPrefs>, craft::settings::LoadReport)>,
     /// Decode a file's bytes into a document (PSD, PNG, JPEG, …).
     pub import: Option<ImportFn>,

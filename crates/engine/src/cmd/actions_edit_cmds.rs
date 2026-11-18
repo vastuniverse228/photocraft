@@ -708,15 +708,7 @@ mod tests {
     }
 
     fn parent_steps(s: &Session) -> Vec<(String, Value)> {
-        s.actions.list
-            .actions()
-            .iter()
-            .find(|a| a.name == "Parent")
-            .unwrap()
-            .steps
-            .iter()
-            .map(|step| (step.command.clone(), step.params.clone()))
-            .collect()
+        s.actions.list.actions().iter().find(|a| a.name == "Parent").unwrap().steps.iter().map(|step| (step.command.clone(), step.params.clone())).collect()
     }
 
     #[test]
