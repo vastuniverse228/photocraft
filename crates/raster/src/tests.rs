@@ -712,6 +712,23 @@ fn tile_content_bounds_match_a_per_pixel_scan() {
 }
 
 #[test]
+fn translated_remembers_that_the_pixels_only_moved() {
+    let mut s = Surface::new(PixelFormat::RGBA8);
+    s.fill_rect(Rect::new(1, 2, 40, 50), &[0.2, 0.3, 0.4, 1.0]);
+    let origin = s.pixel_placement();
+    let nudged = s.translated(1, -2, s.content_bounds());
+    assert_eq!(nudged.moved_by(origin), Some((1, -2)));
+    let again = nudged.translated(TILE_SIZE, 3, nudged.content_bounds());
+    assert_eq!(again.moved_by(origin), Some((1 + TILE_SIZE, 1)));
+    let mut painted = nudged.clone();
+    painted.write_region(Rect::new(4, 4, 5, 5), &[1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(painted.moved_by(origin), None);
+    // A shift that does not fit in the offset is a new identity, not a wrapped small move.
+    let overflowed = Placement { content: origin.0, dx: i32::MAX, dy: 0 }.shifted(1, 0);
+    assert_ne!(overflowed.content, origin.0);
+}
+
+#[test]
 fn translated_matches_reading_the_moved_pixels() {
     // Any offset (whole tiles, negative, across tile edges), every depth, a non-zero default.
     for fmt in [PixelFormat::RGBA8, PixelFormat::RGBA16, PixelFormat::RGBA32F, PixelFormat::GRAY8] {

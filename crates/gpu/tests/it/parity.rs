@@ -2233,6 +2233,12 @@ fn a_tile_aligned_move_reuses_styled_maps_without_reading_the_shape() {
     let s = fx_check(&mut g, &d, "moved by one tile");
     assert_eq!(s.fx_shape_reads, 0, "{s:?}");
     assert_eq!((s.fx_shapes, s.fx_programs), (0, 0), "{s:?}");
+    let src = d.layers[1].surface().unwrap();
+    let nudged = src.translated(1, -1, src.content_bounds());
+    *d.layers[1].surface_mut().unwrap() = nudged;
+    let s = fx_check(&mut g, &d, "moved by one pixel");
+    assert_eq!(s.fx_shape_reads, 0, "{s:?}");
+    assert_eq!((s.fx_shapes, s.fx_programs), (0, 0), "{s:?}");
 }
 
 #[test]

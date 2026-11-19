@@ -490,20 +490,35 @@ pub(crate) fn tile_shift(old: &Tiles, current: &Surface) -> Option<(i32, i32)> {
 }
 
 /// Whether `content` and `mask` are the snapshots in `tiles`, shifted by the same amount as
-/// `old` to `new`. An absent source must stay absent. A source with no tiles is not a move:
-/// the caller still compares the shape.
-pub(crate) fn sources_follow(tiles: &[Option<Tiles>; 2], content: Option<&Surface>, mask: Option<&Surface>, old: Rect, new: Rect) -> bool {
+/// `old` to `new`.
+///
+/// A whole-tile move shares the tile allocations ([`tile_shift`]). A smaller move rebuilds the
+/// tiles, and [`Surface::moved_by`](photocraft_raster::Surface::moved_by) still says they are the
+/// same pixels. An absent source must stay absent. A source that was not there, or whose pixels
+/// were edited, is not a move: the caller still compares the shape. `trust_placement` is false
+/// for a filled shape: its outline is drawn from the path again, and a move smaller than a tile
+/// can change that coverage even when the cached pixels only shifted. A vector shape with no
+/// surface stays on the compare, because its outline can change without a surface moving.
+pub(crate) fn sources_follow(
+    tiles: &[Option<Tiles>; 2],
+    placed: &[Option<(u64, i32, i32)>; 2],
+    content: Option<&Surface>,
+    mask: Option<&Surface>,
+    old: Rect,
+    new: Rect,
+    trust_placement: bool,
+) -> bool {
     let (Some(dx), Some(dy)) = (new.x0.checked_sub(old.x0), new.y0.checked_sub(old.y0)) else { return false };
     if dx == 0 && dy == 0 {
         return false;
     }
-    let one = |prev: &Option<Tiles>, cur: Option<&Surface>| match (prev, cur) {
+    let one = |prev: &Option<Tiles>, earlier: Option<(u64, i32, i32)>, cur: Option<&Surface>| match (prev, cur) {
         (None, None) => true,
-        (Some(prev), Some(cur)) => tile_shift(prev, cur) == Some((dx, dy)),
+        (Some(prev), Some(cur)) => tile_shift(prev, cur) == Some((dx, dy)) || (trust_placement && earlier.is_some_and(|p| cur.moved_by(p) == Some((dx, dy)))),
         _ => false,
     };
     let any = tiles.iter().any(|t| t.as_ref().is_some_and(|m| !m.is_empty()));
-    any && one(&tiles[0], content) && one(&tiles[1], mask)
+    any && one(&tiles[0], placed[0], content) && one(&tiles[1], placed[1], mask)
 }
 
 /// Union of the tiles that differ between `old` and `s`.
@@ -553,8 +568,10 @@ pub(crate) fn shape_key(layer: &Layer, canvas: Rect) -> u64 {
                 let mut outline =
                     sh.path.control_bounds().map_or_else(|| sh.path.clone(), |(x, y, _, _)| sh.path.transform(&photocraft_geom::Affine::translate(-x, -y)));
                 // Integer translation can perturb fractional f64 coordinates in the low bits.
-                // Quantize only the fingerprint (1/65536 px); rendering keeps the original path,
-                // and sync_fx still requires exact coverage equality before reusing moved maps.
+                // Quantize only the fingerprint (1/65536 px); rendering keeps the original path.
+                // A move by a whole tile shares the rendered tiles and skips another read. A
+                // smaller move still compares coverage, because the path can shift by a fraction
+                // of a pixel while the cached pixels are only translated.
                 for subpath in &mut outline.subpaths {
                     for knot in &mut subpath.knots {
                         for point in [&mut knot.anchor, &mut knot.in_ctrl, &mut knot.out_ctrl] {
