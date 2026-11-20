@@ -2,6 +2,9 @@
 # this job only builds the unsigned portable zip and uploads it as a workflow artifact so it
 # can be installed without a local Rust toolchain.
 #
+# A push to the daily-driver branch or to main builds the zip. Run workflow stays available
+# because this file is on the default branch.
+#
 # Release profile overrides (this job only): codegen-units 16 and no debuginfo. The repo's
 # release profile uses one codegen unit, which peaks past the memory of a 16 GB hosted
 # runner while linking PhotoCraft. The binary is still an optimised release build with thin LTO.
@@ -11,7 +14,7 @@ on:
   push:
     branches:
       - cursor/windows-daily-driver-52cf
-  pull_request:
+      - main
   workflow_dispatch:
 
 permissions:
