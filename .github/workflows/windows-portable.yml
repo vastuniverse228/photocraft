@@ -1,0 +1,119 @@
+# Windows x64 portable zip for this fork. The shared release workflow signs and publishes;
+# this job only builds the unsigned portable zip and uploads it as a workflow artifact so it
+# can be installed without a local Rust toolchain.
+#
+# GitHub only shows "Run workflow" when this file is on the default branch. A push to the
+# daily-driver branch is the other way this fork builds that zip.
+#
+# Release profile overrides (this job only): codegen-units 16 and no debuginfo. The repo's
+# release profile uses one codegen unit, which peaks past the memory of a 16 GB hosted
+# runner while linking PhotoCraft. The binary is still an optimised release build with thin LTO.
+name: Windows portable zip
+
+on:
+  push:
+    branches:
+      - cursor/windows-daily-driver-52cf
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    name: windows-x64 portable zip
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      # Released sccache expands Cargo's response files and exceeds Windows' rustc spawn limit
+      # (#13543). Cargo handles the command line itself.
+      RUSTC_WRAPPER: ""
+      CARGO_INCREMENTAL: "0"
+      CARGO_NET_RETRY: "10"
+      # Short target path: the Windows compiler command carries one -L per dependency.
+      CARGO_TARGET_DIR: 'D:\t'
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      # Static CRT, same as packaging/windows/package.ps1, so the zip needs no VC++ redistributable.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      PHOTOCRAFT_REQUIRE_WINRES: "1"
+      CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+      CRAFT_FONTS_REQUIRED: "1"
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out craft-fonts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: storytold/craft-fonts
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+          path: craft-fonts
+          persist-credentials: false
+
+      - name: Check out craft-i18n
+        uses: storytold/craft-common-actions/actions/checkout-craft-i18n@main
+
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build PhotoCraft and the CLI
+        shell: bash
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          cargo build --release --locked -p photocraft -p photocraft-cli --features heif --target x86_64-pc-windows-msvc
+
+      - name: Pack the portable zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $null
+          $inPkg = $false
+          foreach ($line in Get-Content -LiteralPath Cargo.toml) {
+            if ($line -match '^\s*\[') { $inPkg = ($line.Trim() -eq '[workspace.package]'); continue }
+            if ($inPkg -and $line -match '^\s*version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
+          }
+          if (-not $version) { throw 'could not read [workspace.package] version from Cargo.toml' }
+          $bin = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc\release'
+          foreach ($exe in 'photocraft.exe', 'photocraft-cli.exe') {
+            if (-not (Test-Path (Join-Path $bin $exe))) { throw "$exe is missing from $bin" }
+          }
+          & (Join-Path $bin 'photocraft-cli.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw "photocraft-cli --version exited $LASTEXITCODE" }
+          $stage = Join-Path $env:RUNNER_TEMP 'photocraft-portable'
+          Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item (Join-Path $bin 'photocraft.exe'), (Join-Path $bin 'photocraft-cli.exe') $stage
+          foreach ($f in 'README.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
+            Copy-Item -LiteralPath $f -Destination $stage
+          }
+          Copy-Item -LiteralPath packaging/windows/portable.txt -Destination $stage
+          $zip = Join-Path $env:RUNNER_TEMP "photocraft-$version-windows-x64-portable.zip"
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+          $check = Join-Path $env:RUNNER_TEMP 'portable-zip-check'
+          Expand-Archive -Path $zip -DestinationPath $check -Force
+          foreach ($f in 'photocraft.exe', 'photocraft-cli.exe', 'portable.txt') {
+            if (-not (Test-Path (Join-Path $check $f))) { throw "the portable zip has no $f at its root" }
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item $zip dist
+          Write-Output "artifact zip: $zip"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: photocraft-windows-x64-portable
+          path: dist/photocraft-*-windows-x64-portable.zip
+          if-no-files-found: error
+          retention-days: 14
