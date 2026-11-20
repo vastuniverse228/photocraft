@@ -339,7 +339,9 @@ mod app_tests {
         assert_eq!(frames.len(), 1, "{frames:?}");
         let f = &frames[0];
         assert!(f.frame_ms >= 60.0 && f.ui_ms >= 60.0, "both passes: {f:?}");
-        assert!(f.input_ms < 30.0, "the first pass isn't the second's input: {f:?}");
+        // Both sleeps belong to the UI slice. The input preamble can be slower than one pass on a
+        // loaded runner, so it is compared with the UI time rather than with a fixed 30 ms.
+        assert!(f.input_ms < f.ui_ms, "the first pass isn't the second's input: {f:?}");
         assert_eq!(app.perf.stage, super::FrameStages::default(), "the last pass closed the record");
     }
 

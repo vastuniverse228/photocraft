@@ -124,9 +124,14 @@ fn whole_layer(d: &crate::DocState, id: LayerId) -> Option<Box<Document>> {
 
 /// Layer `id` as Copy takes it with `ids`. It keeps its clipping mask only when its base is copied
 /// too: pasted without it, it would clip to whatever it lands on, so Photoshop releases it (#9736).
+/// A layer on an artboard keeps the flag. Paste onto another board uses it when that board already
+/// has a layer to clip to, and drops it on an empty board ([`join_board`], #10538). A paste that
+/// does not join a board releases it ([`paste_layers`]).
 fn copied_layer(doc: &Document, id: LayerId, ids: &[LayerId]) -> Option<Layer> {
     let mut l = doc.layer(id)?.clone();
-    l.clipped &= crate::clip_group::base_of(doc, id).is_some_and(|base| ids.contains(&base));
+    if doc.artboard_of(id).is_none() {
+        l.clipped &= crate::clip_group::base_of(doc, id).is_some_and(|base| ids.contains(&base));
+    }
     Some(l)
 }
 
@@ -586,6 +591,16 @@ fn paste_layers(s: &mut Session, layers: &Document, dx: i32, dy: i32, board: Opt
         }
     }
     let styles = std::mem::take(&mut copies.text_styles);
+    // A layer copied off an artboard kept its clip so another board can use it (#10538). A paste
+    // that does not join a board releases it when its base was not copied (#9736).
+    if board.is_none() {
+        let release: Vec<_> = copies.layers.iter().filter(|l| crate::clip_group::base_of(&copies, l.id).is_none()).map(|l| l.id).collect();
+        for l in &mut copies.layers {
+            if release.contains(&l.id) {
+                l.clipped = false;
+            }
+        }
+    }
     let id = s.edit("Paste", |doc, active| {
         doc.patterns.extend(patterns);
         crate::layer_copy_cmds::land_text_styles(doc, styles);

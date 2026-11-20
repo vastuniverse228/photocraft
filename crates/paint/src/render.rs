@@ -208,12 +208,26 @@ pub fn texture_combine(mode: MaskMode, v: f32, t: f32, d: f32) -> f32 {
 }
 
 /// A stroke-ready brush: the settings plus prepared tip mips and texture.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BrushContext {
     pub brush: BrushSettings,
     tip: Option<Arc<Mips>>,
     dual_tip: Option<Arc<Mips>>,
     texture: Option<Arc<PatternImage>>,
+    /// Last round computed tip, reused when the next dab differs only by whole pixels.
+    round_stamp: std::sync::Arc<std::sync::Mutex<Option<RoundStamp>>>,
+    round_stamp_hits: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl std::fmt::Debug for BrushContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BrushContext")
+            .field("brush", &self.brush)
+            .field("tip", &self.tip)
+            .field("dual_tip", &self.dual_tip)
+            .field("texture", &self.texture)
+            .finish()
+    }
 }
 
 fn prepare_pattern(b: &BrushSettings) -> Option<Arc<PatternImage>> {
@@ -255,7 +269,15 @@ impl BrushContext {
             dual_tip: if brush.dual_brush.enabled { mips(&brush.dual_brush.tip) } else { None },
             texture: prepare_pattern(&brush),
             brush,
+            round_stamp: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            round_stamp_hits: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
+    }
+
+    /// How many dabs reused the cached round stamp. Strokes that share a cloned context share the count.
+    #[cfg(test)]
+    pub(crate) fn round_stamp_hits(&self) -> u64 {
+        self.round_stamp_hits.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Texture value at a document pixel (bilinear, tiled).
@@ -389,7 +411,12 @@ impl BrushContext {
             && d.alpha.is_finite()
             && w > 0
         {
+            let stamp = self.round_stamp_key(d, rect, hardness, aliased);
+            if stamp.as_ref().is_some_and(|stamp| self.copy_round_stamp(stamp, out)) {
+                return;
+            }
             rasterize_round(d, rect, out, profile, aliased);
+            self.store_round_stamp(stamp, out);
             return;
         }
         if w == 0 {
@@ -1446,6 +1473,71 @@ pub fn render_stroke_clipped(
     r.push(points);
     r.finish();
     r.composite(&pre, target, selection, lock_transparency, true)
+}
+
+/// Identity of a round computed tip, apart from a whole-pixel shift of its rectangle.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct StampKey {
+    radius: u32,
+    alpha: u32,
+    roundness: u32,
+    hardness: u32,
+    aliased: bool,
+    w: u32,
+    h: u32,
+    ox: u32,
+    oy: u32,
+}
+
+struct RoundStamp {
+    key: StampKey,
+    pixels: Vec<f32>,
+}
+
+/// Floats in one cached stamp. A 2000 px tip is about this; a larger one is rasterized each dab
+/// so a stroke does not keep a second full-size mask on a 16 GiB machine.
+const MAX_ROUND_STAMP: usize = 4_000_000;
+
+impl BrushContext {
+    fn round_stamp_key(&self, d: &Dab, rect: Rect, hardness: f32, aliased: bool) -> Option<StampKey> {
+        let (w, h) = (rect.width(), rect.height());
+        if w == 0 || h == 0 || (w as usize).saturating_mul(h as usize) > MAX_ROUND_STAMP {
+            return None;
+        }
+        let (cx, cy) = if aliased { grid_center(d.center.x, d.center.y, 2.0 * d.radius) } else { (d.center.x as f32, d.center.y as f32) };
+        let (ox, oy) = (cx - rect.x0 as f32, cy - rect.y0 as f32);
+        (ox.is_finite() && oy.is_finite()).then_some(StampKey {
+            radius: d.radius.to_bits(),
+            alpha: d.alpha.to_bits(),
+            roundness: d.roundness.to_bits(),
+            hardness: hardness.to_bits(),
+            aliased,
+            w,
+            h,
+            ox: ox.to_bits(),
+            oy: oy.to_bits(),
+        })
+    }
+
+    fn copy_round_stamp(&self, key: &StampKey, out: &mut [f32]) -> bool {
+        let guard = self.round_stamp.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(stamp) = guard.as_ref() else { return false };
+        if stamp.key != *key || stamp.pixels.len() != out.len() {
+            return false;
+        }
+        out.copy_from_slice(&stamp.pixels);
+        self.round_stamp_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        true
+    }
+
+    fn store_round_stamp(&self, key: Option<StampKey>, out: &[f32]) {
+        let Some(key) = key else { return };
+        if out.len() > MAX_ROUND_STAMP {
+            return;
+        }
+        let mut guard = self.round_stamp.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(RoundStamp { key, pixels: out.to_vec() });
+    }
 }
 
 // With zero angle, the transform only changes signs. For circles, any rotation preserves

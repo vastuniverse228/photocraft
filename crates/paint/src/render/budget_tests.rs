@@ -46,6 +46,31 @@ fn a_dab_that_straddles_the_clip_edge_is_painted_in_full_inside() {
 }
 
 #[test]
+fn a_large_round_brush_reuses_its_stamp_when_only_the_position_changes() {
+    use photocraft_geom::Point;
+    let brush = brush(400.0, 0.05);
+    let ctx = BrushContext::new(&brush);
+    let rect_of = |d: &crate::Dab| ctx.dab_rect(d, false);
+    let mut a = crate::Dab::round(Point::new(200.25, 180.5), 200.0, 0.8);
+    a.roundness = 1.0;
+    let mut b = a;
+    b.center = Point::new(260.25, 180.5);
+    let ra = rect_of(&a);
+    let rb = rect_of(&b);
+    let mut pa = vec![0.0; ra.width() as usize * ra.height() as usize];
+    let mut pb = vec![0.0; rb.width() as usize * rb.height() as usize];
+    ctx.rasterize(&a, false, ra, &mut pa);
+    assert_eq!(ctx.round_stamp_hits(), 0);
+    ctx.rasterize(&b, false, rb, &mut pb);
+    assert_eq!(ctx.round_stamp_hits(), 1);
+    assert_eq!(pa, pb);
+    // A different sub-pixel position is a different stamp.
+    b.center = Point::new(260.0, 180.5);
+    ctx.rasterize(&b, false, rect_of(&b), &mut pb);
+    assert_eq!(ctx.round_stamp_hits(), 1);
+}
+
+#[test]
 fn a_huge_brush_at_the_finest_spacing_over_a_long_path_stays_cheap_with_a_clip() {
     // 500 px brush at the 1 % minimum spacing over 2e6 px: 400 000 dabs; only those that reach the
     // clip are rasterized.

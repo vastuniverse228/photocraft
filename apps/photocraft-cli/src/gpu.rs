@@ -20,6 +20,20 @@ pub(crate) struct GpuPolicy {
     pub(crate) enabled: bool,
 }
 
+/// Why `PHOTOCRAFT_GPU` was refused.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum GpuPolicyError {
+    /// The variable was set to something other than `1`, `0` or empty.
+    #[error("invalid value '{value}' for 'PHOTOCRAFT_GPU': expected '1' or '0'")]
+    InvalidEnv { value: String },
+}
+
+impl From<GpuPolicyError> for crate::CliError {
+    fn from(error: GpuPolicyError) -> Self {
+        crate::CliError::Other(error.to_string())
+    }
+}
+
 impl GpuPolicy {
     /// Resolve policy from arguments and environment.
     ///
@@ -28,7 +42,7 @@ impl GpuPolicy {
     /// - Explicit `--no-gpu` disables GPU.
     /// - Neither flag: `PHOTOCRAFT_GPU` env var (1 = enabled, 0 or empty/unset = disabled).
     ///   Any other nonempty value is rejected.
-    pub(crate) fn from_args(args: &GpuArgs) -> Result<Self, String> {
+    pub(crate) fn from_args(args: &GpuArgs) -> Result<Self, GpuPolicyError> {
         if args.gpu {
             return Ok(Self { enabled: true });
         }
@@ -44,7 +58,7 @@ impl GpuPolicy {
                 } else if trimmed == "1" {
                     Ok(Self { enabled: true })
                 } else {
-                    Err(format!("invalid value '{trimmed}' for 'PHOTOCRAFT_GPU': expected '1' or '0'"))
+                    Err(GpuPolicyError::InvalidEnv { value: trimmed.to_string() })
                 }
             }
             None => Ok(Self { enabled: false }),

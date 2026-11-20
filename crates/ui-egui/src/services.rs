@@ -1,6 +1,6 @@
-#[cfg(target_arch = "wasm32")]
-use super::FileDialogFn;
 use super::{Document, OsEvent, Value, dds_options_ui, jobs_ui, jpeg_options_ui, monitor_status, targa_options_ui, tiff_options_ui};
+#[cfg(target_arch = "wasm32")]
+use crate::file_dialog::FileDialogFn;
 
 /// The error a save gets while another save waits on its format prompt.
 pub(crate) const SAVE_OPTIONS_OPEN: &str = "Answer the TIFF, Targa, DDS or JPEG Options before starting another save";
@@ -493,6 +493,10 @@ pub type RightButtonDownFn = Box<dyn Fn() -> bool + Send + Sync>;
 /// Which end of the pen is in use, `Some(true)` = eraser, `None` = no pen ([`Services::pen_end`]).
 pub type PenEndFn = Box<dyn Fn() -> Option<bool> + Send + Sync>;
 
+/// Windows Ink tilt and twist the pointer sample does not carry: `[tilt_x, tilt_y, rotation]`
+/// in degrees, `None` when no pen is in range ([`Services::pen_pose`]).
+pub type PenPoseFn = Box<dyn Fn() -> Option<[f32; 3]> + Send + Sync>;
+
 /// Polls the platform's optional WinTab packet queue into the app's stylus feed (Windows), with
 /// whether the app window is focused (to re-assert WinTab overlap priority on activation).
 pub type TabletPollFn = Box<dyn FnMut(bool)>;
@@ -507,9 +511,13 @@ pub struct Services {
     pub screen_capture: Option<std::sync::Arc<dyn Fn() -> Box<dyn craft::color_ui::ui::CaptureSource> + Send + Sync>>,
     /// The file service the app's host answers file picks with (`HostBuilder::files`); `None` in tests that install none.
     pub files: Option<std::sync::Arc<dyn craft::host::Files>>,
-    /// The main-thread side of the native file panels, pumped by the app.
+    /// The main-thread side of the native file panels, pumped by the app. The dialogs crate is
+    /// native only (its folder picker needs file paths).
+    #[cfg(not(target_arch = "wasm32"))]
     pub file_panels: Option<craft::dialogs::service::FilePanels>,
-    /// The opened settings store and what opening it reported; `None` in the web build.
+    /// The opened settings store and what opening it reported. Native only: the store's path
+    /// types are not in the web build, which keeps preferences in browser storage instead.
+    #[cfg(not(target_arch = "wasm32"))]
     pub settings: Option<(craft::settings::SettingsStore<photocraft_engine::prefs::SavedPrefs>, craft::settings::LoadReport)>,
     /// Decode a file's bytes into a document (PSD, PNG, JPEG, …).
     pub import: Option<ImportFn>,
@@ -636,6 +644,8 @@ pub struct Services {
     /// Which end of the pen is in use, where the platform reports it outside the stylus feed
     /// (Windows: the feed carries no pen samples there). Read for the eraser-end tool switch.
     pub pen_end: Option<PenEndFn>,
+    /// Windows Ink tilt and twist, merged onto a pointer sample that has none (winit drops them).
+    pub pen_pose: Option<PenPoseFn>,
     /// WinTab packet poll (Windows with Windows Ink disabled; see `photocraft_tablet::wintab`).
     pub tablet_poll: Option<TabletPollFn>,
     /// The persistent brush preset store, loading in the background (desktop; see

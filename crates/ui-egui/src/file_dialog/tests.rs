@@ -51,12 +51,25 @@ fn chose(path: &str) -> Picked {
 }
 
 /// The file a Save request suggests: its folder and name together.
+///
+/// The request stores the folder and the name apart. Joining them with `Path::join` rewrites
+/// `/pics` + `photo.jpg` as `/pics\photo.jpg` on Windows, which is not the path the dialog was
+/// given. The name goes back with the folder's own separator.
 fn suggested(request: &PickRequest) -> String {
     let name = request.file_name.clone().unwrap_or_default();
     match &request.directory {
-        Some(dir) => dir.join(name).to_string_lossy().into_owned(),
+        Some(dir) => join_suggested(&dir.to_string_lossy(), &name),
         None => name,
     }
+}
+
+/// `dir` and `name` as one path, keeping `/` when `dir` uses it.
+fn join_suggested(dir: &str, name: &str) -> String {
+    if dir.is_empty() {
+        return name.to_owned();
+    }
+    let sep = if dir.contains('\\') && !dir.contains('/') { '\\' } else { '/' };
+    if dir.ends_with(['/', '\\']) { format!("{dir}{name}") } else { format!("{dir}{sep}{name}") }
 }
 
 /// The file the one open Save dialog suggests.
@@ -589,10 +602,9 @@ fn save_and_export_dialogs_start_beside_the_document() {
     }
 }
 
-/// The path `pick_save` suggests for `name` in `dir` on this platform: it joins with `Path::join`,
-/// which uses `\` on Windows, so the expected values must be built the same way (#2745).
+/// The path `pick_save` suggests for `name` in `dir`: the same join as [`suggested`] (#2745).
 fn joined(dir: &str, name: &str) -> String {
-    Path::new(dir).join(name).to_string_lossy().into_owned()
+    join_suggested(dir, name)
 }
 
 /// #1826: after the user navigates a save or export dialog elsewhere, the document's next dialog
@@ -1428,7 +1440,7 @@ fn a_scripted_quality_survives_the_changed_on_disk_prompt() {
 fn save_a_copy_appends_copy_unless_the_preference_says_not_to() {
     let ctx = egui::Context::default();
     for (off, name) in [(false, "My image copy.psd"), (true, "My image.psd")] {
-        let want = Path::new("/pics").join(name).to_string_lossy().into_owned();
+        let want = joined("/pics", name);
         let (mut app, files, _) = jpeg_app(Some("/pics/My image.JPEG"), false);
         app.run("prefs.set", json!({"path": "fileHandling.doNotAppendCopy", "value": off})).unwrap();
         menus::invoke(&mut app, &ctx, "file.saveACopy", json!({})).unwrap();

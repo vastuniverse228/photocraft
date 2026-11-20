@@ -225,10 +225,16 @@ fn click_tool(app: &mut PhotocraftApp, tool: Tool, at: [f64; 2]) -> bool {
     }
 }
 
+/// Record the pointer's pen sample, filling tilt and twist from Windows Ink when winit left them out.
+fn record_pen(app: &mut PhotocraftApp, time_ms: f64, sample: craft::behavior::PointerSample) {
+    let pose = app.services.pen_pose.as_ref().and_then(|read| read());
+    app.stylus.record_pointer(time_ms, Some(crate::input::stylus::apply_platform_pose(sample, pose)));
+}
+
 fn begin(app: &mut PhotocraftApp, state: &mut PaintState, pointer: &ToolPointer, at: [f64; 2], cx: &mut ToolContext<'_>) -> ToolAction {
     let tool = app.ui.tool;
     let (mods, button) = (pointer.mods, pointer.button);
-    app.stylus.record_pointer(pointer.time * 1000.0, Some(pointer.sample));
+    record_pen(app, pointer.time * 1000.0, pointer.sample);
     if with_resize(app, |r, app| r.press(app, pointer, cx)) {
         return ToolAction::Claimed;
     }
@@ -361,7 +367,7 @@ impl CanvasTool for PaintTool<'_> {
             let Some(at) = doc_point(cx, pointer.pos) else { return };
             let Some(stroke) = state.stroke.as_mut() else { return };
             let now_ms = pointer.time * 1000.0;
-            app.stylus.record_pointer(now_ms, Some(pointer.sample));
+            record_pen(app, now_ms, pointer.sample);
             stroke.track(pointer.mods);
             // ⇧: straight 0/45/90° strokes (stroke_constraint.rs).
             let last = stroke.points.last().map_or(stroke.start, |p| [p[0], p[1]]);
@@ -397,7 +403,7 @@ impl CanvasTool for PaintTool<'_> {
                 crate::color_hud::release(&mut app.ui);
                 return;
             };
-            app.stylus.record_pointer(pointer.time * 1000.0, Some(pointer.sample));
+            record_pen(app, pointer.time * 1000.0, pointer.sample);
             stroke.track(pointer.mods);
             // A pen tap paints at its peak pressure; a mouse is unchanged.
             tap_at_peak_pressure(app, &mut stroke);

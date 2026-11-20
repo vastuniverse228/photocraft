@@ -121,12 +121,28 @@ pub(super) fn rules() -> Vec<SettingRule> {
         }
     }
 
-    // Interface groups, in Photoshop's order.
-    for key in ["canvasColor", "canvasCustomColor", "canvasBorder"] {
+    // Interface groups, in Photoshop's order. A row with no group is drawn in one untitled
+    // block above every titled group, so a key that belongs with a later group still has to
+    // name that group or it lands at the top of the page (#15554).
+    for key in ["appearanceMode", "canvasColor", "canvasCustomColor", "showCanvasDots", "canvasBorder"] {
         tweak(&mut rules, &format!("interface.{key}"), |r| r.group("Appearance"));
     }
-    for key in ["language", "uiFontSize", "uiScale"] {
+    for key in ["showHomeRecentFiles", "uiScale", "language", "uiFontSize"] {
         tweak(&mut rules, &format!("interface.{key}"), |r| r.group("Presentation"));
+    }
+    for key in [
+        "showChannelsInColor",
+        "dynamicColorSliders",
+        "showMenuColors",
+        "clipThumbnailsToLayerBounds",
+        "showTooltips",
+        "showBoundingBoxWhenDraggingLayer",
+        "systemTitleBar",
+        "showFileNameInTitle",
+        "notificationAutoHide",
+        "notificationDurationSeconds",
+    ] {
+        tweak(&mut rules, &format!("interface.{key}"), |r| r.group("Options"));
     }
 
     // Drawn elsewhere or not at all: the theme keys follow the Appearance row, View › Rulers sets showRulers, and the
@@ -174,6 +190,10 @@ pub(super) fn rules() -> Vec<SettingRule> {
     ] {
         tweak(&mut rules, path, |r| r.custom());
     }
+    // Appearance Mode is a custom row whose page already names itself. A second label from the
+    // settings row reads "Appearance Mode: Appearance Mode:" (#15553). An empty label draws the
+    // custom row with no field caption. The interface-page test counts three names without this.
+    tweak(&mut rules, "interface.appearanceMode", |r| r.label(""));
     // The favourite fonts are the user's library, not a Type setting.
     tweak(&mut rules, "type.favoriteFonts", |r| r.keep_on_reset());
 

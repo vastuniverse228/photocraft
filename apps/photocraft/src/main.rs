@@ -79,6 +79,17 @@ fn title_bar_pref(prefs: &photocraft_engine::prefs::Preferences) -> TitleBarPref
     if prefs.interface.system_title_bar { TitleBarPref::System } else { TitleBarPref::Integrated }
 }
 
+/// A Preferences automation folder that cannot be used. The launch continues; the warning says why.
+#[derive(Debug, thiserror::Error)]
+enum PreferenceFolder {
+    /// The stored path depends on the folder the app was started from.
+    #[error("`{0}` is not an absolute path")]
+    NotAbsolute(String),
+    /// The folder could not be opened as a capability.
+    #[error("{0}")]
+    Open(photocraft_automation::AutomationError),
+}
+
 /// The automation roots: `--automation-read-root` / `--automation-write-root` (or their
 /// variables) win; a direction without one takes Preferences › AI Integrations' folder. A flag's
 /// root that can't be opened stops the launch (exit status 2) as before. A preference's root that
@@ -99,11 +110,11 @@ fn automation_workspace(
             continue;
         };
         let opened = if !root.is_absolute() {
-            Err(format!("`{}` is not an absolute path", root.display()))
+            Err(PreferenceFolder::NotAbsolute(root.display().to_string()))
         } else if read {
-            workspace.with_read_root(&root).map_err(|e| e.to_string())
+            workspace.with_read_root(&root).map_err(PreferenceFolder::Open)
         } else {
-            workspace.with_write_root(&root).map_err(|e| e.to_string())
+            workspace.with_write_root(&root).map_err(PreferenceFolder::Open)
         };
         match opened {
             Ok(w) => workspace = w,
@@ -721,6 +732,12 @@ fn main() -> eframe::Result {
             tablet::spawn_x11(&app.stylus.feed, display);
             app.services.right_button_down = tablet::right_button_service();
             app.services.pen_end = tablet::pen_end_service();
+            // Windows Ink: winit forwards pressure and drops tilt and twist. The pointer hook
+            // keeps them. WinTab writes a full sample into the feed, so it does not use this.
+            #[cfg(target_os = "windows")]
+            if app.session.prefs().tools.tablet_input != photocraft_engine::prefs::TabletInput::WinTab {
+                app.services.pen_pose = tablet::pen_pose_service();
+            }
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
             app.open_paths(&files);
             if !unreadable_paths.is_empty() {

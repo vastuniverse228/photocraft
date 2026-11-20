@@ -116,6 +116,7 @@ Each milestone has a **definition of done (DoD)** and must leave `main` green on
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Windows: a menu popup missing from the accessibility tree no longer closes the app (#15597). Free Transform draws the moving layer over the document (#15546). Milestones, alpha gate and estimates unchanged |
 | 2026-11-12 | minor | M11: Edit › Preferences › AI Integrations connects MCP clients to the running app without a terminal or restart; milestones, alpha gate and estimates unchanged |
 | 2026-10-11 | minor | Linked adaptive Unsharp Mask performance and quality evidence; milestones, alpha gate and estimates unchanged |
 | 2026-10-10 | minor | Photomerge is implemented; real-world quality validation remains open |

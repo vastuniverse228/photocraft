@@ -225,11 +225,25 @@ fn save_text(app: &mut PhotocraftApp, state: &mut DialogState, suggested: &str, 
     // A set name can hold characters a file name can't.
     let name: String = suggested.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c }).collect();
     let saved = app.pick_save(&name, move |app, path| {
-        app.framework.files().write(std::path::Path::new(&path), text.as_bytes()).map_err(|e| e.to_string())?;
+        write_shortcut_file(app, &path, text.as_bytes())?;
         Ok(json!({"path": path}))
     });
     if let Err(e) = saved {
         state.show_error(e);
+    }
+}
+
+/// Writes the shortcut file. Native goes through the host's file service. The browser downloads
+/// through the app's writer; it has no host file service.
+fn write_shortcut_file(app: &mut PhotocraftApp, path: &str, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        app.framework.files().write(std::path::Path::new(path), bytes).map_err(|e| e.to_string())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let write = app.services.write.as_mut().ok_or_else(|| "saving a shortcut file is unavailable in the browser".to_string())?;
+        write(path, bytes)
     }
 }
 

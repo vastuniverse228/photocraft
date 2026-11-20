@@ -425,6 +425,32 @@ fn system_theme_menu_choice_stays_checked_as_the_appearance_changes() {
     }
 }
 
+/// The settings row used to caption the custom Appearance page, which already names Appearance Mode,
+/// so the row read "Appearance Mode: Appearance Mode:" (#15553).
+#[test]
+fn the_interface_page_names_appearance_mode_once() {
+    use egui_kittest::kittest::Queryable;
+    let files = Arc::new(MemoryFiles::new());
+    let h = prefs_harness(&files, "interface", egui::vec2(980.0, 760.0), |_| {});
+    let named = h.query_all_by_label_contains("Appearance Mode").count();
+    assert_eq!(named, 1, "Appearance Mode is named {named} times");
+}
+
+/// Ungrouped Interface rows used to form one block above Appearance and Presentation, so those
+/// groups sat under the rest of the page (#15554).
+#[test]
+fn the_interface_page_leads_with_appearance() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let files = Arc::new(MemoryFiles::new());
+    let h = prefs_harness(&files, "interface", egui::vec2(980.0, 1600.0), |_| {});
+    let top =
+        |label: &str| h.query_all_by_label(label).filter(|n| n.accesskit_node().bounding_box().is_some()).map(|n| n.rect().top()).fold(f32::MAX, f32::min);
+    let appearance = top("Appearance");
+    let presentation = top("Presentation");
+    let tooltips = top("Show tooltips");
+    assert!(appearance < presentation && presentation < tooltips, "appearance {appearance}, presentation {presentation}, tooltips {tooltips}");
+}
+
 #[test]
 fn preferences_interface_offers_and_applies_sync_with_system() {
     let (mut app, store) = app_with_store();

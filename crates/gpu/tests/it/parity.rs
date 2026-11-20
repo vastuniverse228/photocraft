@@ -1448,7 +1448,9 @@ fn many_layers_submit_inside_one_chunk_mode(paged: bool) {
     assert!(worst_diff(&cpu.px, &out).0 <= TOL, "1200 layers, paged={paged}");
     assert_eq!(stats.layers_batched, 0, "{stats:?}");
     assert_eq!(stats.chunks, 1);
-    assert!(stats.flushes > 0, "{stats:?}");
+    // 1200 masked passes at FLUSH_OPS (128) submit several times. One flush would mean the
+    // threshold had climbed back toward the command-buffer limit that lost the device.
+    assert!(stats.flushes >= 8, "{stats:?}");
 }
 
 #[test]
@@ -2214,6 +2216,29 @@ fn layer_effects_move_with_a_layer_overhanging_the_canvas() {
         let s = fx_check(&mut g, &d, &format!("moved by ({dx}, {dy})"));
         assert_eq!(s.fx_programs, 0, "moved by ({dx}, {dy}): {s:?}");
     }
+}
+
+#[test]
+fn a_tile_aligned_move_reuses_styled_maps_without_reading_the_shape() {
+    let Some(mut g) = gpu() else { return };
+    let mut d = fx_doc(900, 900, SampleType::U8);
+    let mut l = blob("fx", d.pixel_format(), 300.0, 300.0, 80.0, [0.8, 0.3, 0.2]);
+    l.effects.items = vec![Effect::DropShadow(shadow(BlendMode::Multiply, 0.8, 120.0, 8.0, 4.0, 0.0))];
+    d.layers.push(l);
+    let first = fx_check(&mut g, &d, "initial");
+    assert!(first.fx_shape_reads >= 1 && first.fx_programs > 0, "{first:?}");
+    let src = d.layers[1].surface().unwrap();
+    let moved = src.translated(photocraft_geom::TILE_SIZE, 0, src.content_bounds());
+    *d.layers[1].surface_mut().unwrap() = moved;
+    let s = fx_check(&mut g, &d, "moved by one tile");
+    assert_eq!(s.fx_shape_reads, 0, "{s:?}");
+    assert_eq!((s.fx_shapes, s.fx_programs), (0, 0), "{s:?}");
+    let src = d.layers[1].surface().unwrap();
+    let nudged = src.translated(1, -1, src.content_bounds());
+    *d.layers[1].surface_mut().unwrap() = nudged;
+    let s = fx_check(&mut g, &d, "moved by one pixel");
+    assert_eq!(s.fx_shape_reads, 0, "{s:?}");
+    assert_eq!((s.fx_shapes, s.fx_programs), (0, 0), "{s:?}");
 }
 
 #[test]

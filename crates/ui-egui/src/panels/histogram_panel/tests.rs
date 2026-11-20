@@ -276,8 +276,10 @@ fn cache_levels_one_still_throttles_recounts_and_an_uncached_refresh_does_not() 
     let mut app = app_with(json!({"width": 64, "height": 48}));
     app.run("prefs.set", json!({"path": "performance.cacheLevels", "value": 1})).unwrap();
     settle(&mut app);
-    // The count just landed, so the next edit falls inside the throttle.
-    app.doc_hist.as_mut().unwrap().at = 0.0;
+    // The count just landed, so the next edit falls inside the throttle. egui's clock is not
+    // zero at the first frame: each pass advances it, and a slow count moves it past 250 ms.
+    let now = app.ctx().input(|i| i.time) * 1000.0;
+    app.doc_hist.as_mut().unwrap().at = now;
     app.run("edit.fill", json!({"color": "#000000"})).unwrap();
     frame(&mut app);
     assert!(app.hist_job.is_none(), "an edit within 250 ms of the last count waits");

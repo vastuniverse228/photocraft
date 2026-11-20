@@ -7,7 +7,8 @@
 //!   normalised force (`POINTER_PEN_INFO::pressure / 1024`); egui-winit forwards it as
 //!   `egui::Event::Touch { force }` alongside the emulated pointer. The runtime's pen source reads
 //!   it and gives each pointer move its [`PointerSample`]. winit drops the pen's tilt and
-//!   rotation, so those stay 0, and reports pressure 0 (a tap lighter than the pen's first
+//!   rotation; the desktop app's pointer hook keeps them and [`apply_platform_pose`] fills a
+//!   sample that has none. winit also reports pressure 0 (a tap lighter than the pen's first
 //!   pressure level) as no force, which the pen source reads as pressure 0 once it knows a pen is
 //!   in use. The desktop app's pointer message hook
 //!   (`photocraft-tablet`) reports which end of the pen is in use through `Services::pen_end`.
@@ -81,6 +82,19 @@ impl PenSample {
         PenSample { pressure: p.pressure, tilt_x: p.tilt[0].to_degrees(), tilt_y: p.tilt[1].to_degrees(), rotation: p.rotation.to_degrees(), eraser: p.eraser }
             .sanitized()
     }
+}
+
+/// Fill tilt and twist from the platform when `sample` has neither. A sample that already
+/// carries either (WinTab, the web, a test) is left as it is. `pose` is `[tilt_x, tilt_y,
+/// rotation]` in degrees.
+pub(crate) fn apply_platform_pose(mut sample: PointerSample, pose: Option<[f32; 3]>) -> PointerSample {
+    let Some([x, y, rotation]) = pose else { return sample };
+    if sample.tilt != [0.0, 0.0] || sample.rotation != 0.0 {
+        return sample;
+    }
+    sample.tilt = [x.to_radians(), y.to_radians()];
+    sample.rotation = rotation.to_radians();
+    sample
 }
 
 /// The pen readings a platform backend writes: the runtime's pen source (`InstallSpec::pen`), which gives each pointer

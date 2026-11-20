@@ -42,6 +42,19 @@ pub struct Budgets {
     pub transient_bytes: u64,
 }
 
+/// Bytes kept back from the tile budget so the rest of the machine still has RAM.
+///
+/// Larger machines keep a twentieth (at least 256 MiB). A machine with 16 GiB or less — a
+/// Windows laptop with a discrete GPU and an integrated GPU sharing the same RAM — starts
+/// paging while that twentieth is still unused, because "available" counts cache those GPUs
+/// take back. An eighth of RAM, and at least 2 GiB, spills tiles to the scratch disk first.
+fn headroom_bytes(total: u64) -> u64 {
+    if total == 0 {
+        return 256 * MIB;
+    }
+    if total <= 16 << 30 { (total / 8).max(2 << 30).min(total / 2) } else { (total / 20).max(256 * MIB) }
+}
+
 /// Other applications and untiled buffers count against the same ceiling. Keep both system
 /// headroom and a working reserve; virtual address-space size is deliberately not treated as RSS.
 pub fn budgets(policy: Policy, sample: Snapshot, resident_tiles: u64) -> Budgets {
@@ -50,7 +63,7 @@ pub fn budgets(policy: Policy, sample: Snapshot, resident_tiles: u64) -> Budgets
         _ => policy.absolute_bytes,
     }
     .max(MIB);
-    let headroom = (sample.total_bytes / 20).max(256 * MIB);
+    let headroom = headroom_bytes(sample.total_bytes);
     let effective = if sample.total_bytes == 0 {
         ceiling
     } else {
@@ -215,6 +228,18 @@ mod tests {
         let b = budgets(Policy { percent: None, absolute_bytes: 512 * MIB }, Snapshot::default(), 0);
         assert_eq!(b.process_ceiling_bytes, 512 * MIB);
         assert_eq!(b.tile_bytes + b.transient_bytes, b.effective_process_bytes);
+    }
+    #[test]
+    fn a_16_gib_machine_reserves_two_gib_before_tiles_grow() {
+        // 70% of 16 GiB is about 11.2 GiB. With 9 GiB still "available" and 1 GiB resident,
+        // the old 5% reserve would have allowed about 9.2 GiB. The 2 GiB reserve leaves 8.
+        let s = Snapshot { total_bytes: 16 << 30, available_bytes: 9 << 30, process_resident_bytes: 1 << 30, process_virtual_bytes: 0 };
+        let b = budgets(Policy { percent: Some(70), absolute_bytes: 0 }, s, 0);
+        assert_eq!(b.effective_process_bytes, 8 << 30);
+        assert!(b.tile_bytes + b.transient_bytes < b.effective_process_bytes);
+        // A 64 GiB machine keeps the twentieth, so the same pressure does not use the 2 GiB floor.
+        let wide = Snapshot { total_bytes: 64 << 30, ..s };
+        assert_eq!(super::headroom_bytes(wide.total_bytes), (64 << 30) / 20);
     }
     #[test]
     fn hostile_percent_and_pressure_do_not_overflow() {

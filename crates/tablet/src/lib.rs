@@ -34,6 +34,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod appkit;
+pub mod pen_pose;
 pub mod xi;
 
 #[cfg(target_os = "macos")]

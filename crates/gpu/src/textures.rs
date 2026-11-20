@@ -27,6 +27,8 @@ pub struct Stats {
     pub tiles_shared: usize,
     /// Effect layers whose shape was (re)rendered, fully or partially.
     pub fx_shapes: usize,
+    /// Times the CPU shape was read. A pure move of unchanged tiles does not read it.
+    pub fx_shape_reads: usize,
     /// Effect map programs run (one per effect whose maps were rebuilt).
     pub fx_programs: usize,
     /// Effect-map pixels written (all stages).
@@ -225,6 +227,9 @@ pub(crate) struct FxEntry {
     pub(crate) shape_key: u64,
     /// Tiles the shape was rendered from (content, mask): damage is their difference.
     pub(crate) tiles: [Option<fx::Tiles>; 2],
+    /// Pixel identity of those tiles. A move smaller than a tile rebuilds the allocations, and
+    /// this is how the maps are still recognised as the same pixels.
+    pub(crate) placed: [Option<(u64, i32, i32)>; 2],
     /// Groups: the tiles `shape_key` hashes, by address only (see [`fx::Tiles`]).
     pub(crate) _pin: Vec<std::sync::Weak<Tile>>,
     /// The shape on the CPU (distance fields are computed from it) and on the GPU.

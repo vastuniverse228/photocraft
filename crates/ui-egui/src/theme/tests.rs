@@ -172,6 +172,22 @@ fn light_themes_outline_the_slider_knob() {
     }
 }
 
+/// A glyph no bundled face covers draws a box. The test harness sets the panic policy after the
+/// app is built, which aborts layout when the language list draws Tamil. The frame selects tofu.
+#[test]
+fn a_missing_glyph_draws_tofu_instead_of_panicking() {
+    let ctx = egui::Context::default();
+    install_runtime(&ctx, None);
+    ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Panic);
+    keep_missing_glyphs_visible(&ctx);
+    assert_eq!(ctx.missing_glyph_policy(), egui::MissingGlyphPolicy::Tofu);
+    ctx.run_ui(Default::default(), |ui| {
+        ui.label("த");
+    })
+    .textures_delta
+    .clear();
+}
+
 /// Every palette's labels and icons read on the surfaces they sit on, its text keeps a hierarchy,
 /// and its button labels read on their fills. The floors are those the lowest-contrast palette
 /// (Solarized Dark, whose base0 text is the palette's own) holds.

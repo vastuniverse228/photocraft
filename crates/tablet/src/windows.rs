@@ -4,7 +4,8 @@
 //! `PEN_FLAG_ERASER`) on Windows and turns pen inputs into `WindowEvent::Touch`, mapping them to
 //! `PointerButton::Primary`. Windows Ink also does not update `GetAsyncKeyState(VK_RBUTTON)` for
 //! stylus barrel buttons. Thread-local hooks inspect `WM_POINTER*` messages on the UI thread to
-//! track the physical barrel button state and which end of the pen is in use: `WH_GETMESSAGE` for
+//! track the physical barrel button state, which end of the pen is in use, and the pen's tilt
+//! and twist (`POINTER_PEN_INFO`, which winit also drops): `WH_GETMESSAGE` for
 //! the posted ones (`WM_POINTERDOWN`, `WM_POINTERUPDATE`, `WM_POINTERUP`) and `WH_CALLWNDPROC` for
 //! `WM_POINTERENTER` and `WM_POINTERLEAVE`, which Windows documents as sent to the window, so the
 //! queue hook alone may never see the pen arrive or leave.
@@ -25,6 +26,37 @@ static PEN_END: AtomicU8 = AtomicU8::new(0);
 
 /// The pen end of the last contact [`take_pen_end`] has not read yet, as [`encode_end`] stores it.
 static CONTACT_END: AtomicU8 = AtomicU8::new(0);
+
+/// The latest Windows Ink tilt and twist, as `f32` bits, while [`POSE_VALID`] is set.
+static POSE_VALID: AtomicBool = AtomicBool::new(false);
+static POSE_TILT_X: AtomicU32 = AtomicU32::new(0);
+static POSE_TILT_Y: AtomicU32 = AtomicU32::new(0);
+static POSE_ROTATION: AtomicU32 = AtomicU32::new(0);
+
+fn store_pose(pose: crate::pen_pose::PenPose) {
+    POSE_TILT_X.store(pose.tilt_x.to_bits(), Ordering::Relaxed);
+    POSE_TILT_Y.store(pose.tilt_y.to_bits(), Ordering::Relaxed);
+    POSE_ROTATION.store(pose.rotation.to_bits(), Ordering::Relaxed);
+    // Release publishes the three stores above to a later Acquire in [`pen_pose`].
+    POSE_VALID.store(true, Ordering::Release);
+}
+
+fn clear_pose() {
+    POSE_VALID.store(false, Ordering::Release);
+}
+
+/// Tilt and twist of the pen in range, in degrees. `None` when no pen is in range, or the
+/// packets so far carried neither tilt nor rotation.
+pub fn pen_pose() -> Option<crate::pen_pose::PenPose> {
+    if !POSE_VALID.load(Ordering::Acquire) {
+        return None;
+    }
+    Some(crate::pen_pose::PenPose {
+        tilt_x: f32::from_bits(POSE_TILT_X.load(Ordering::Relaxed)),
+        tilt_y: f32::from_bits(POSE_TILT_Y.load(Ordering::Relaxed)),
+        rotation: f32::from_bits(POSE_ROTATION.load(Ordering::Relaxed)),
+    })
+}
 
 fn encode_end(end: Option<bool>) -> u8 {
     match end {
@@ -213,6 +245,9 @@ pub fn handle_pointer_message(message: u32, w_param: usize, pen_flags: impl FnOn
     PEN_END.store(encode_end(next.end), Ordering::Relaxed);
     PEN_ID.store(next.pen_id.unwrap_or(NO_PEN), Ordering::Relaxed);
     CONTACT_END.store(encode_end(next.contact), Ordering::Relaxed);
+    if next.pen_id.is_none() {
+        clear_pose();
+    }
 }
 
 /// `GetPointerPenInfo`'s pen flags for a pointer (`None`: not a pen).
@@ -223,6 +258,9 @@ fn read_pen_flags(pointer_id: u32) -> Option<u32> {
         let mut info: POINTER_PEN_INFO = std::mem::zeroed();
         (GetPointerPenInfo(pointer_id, &mut info) != 0).then_some(info)
     }?;
+    if let Some(pose) = crate::pen_pose::windows_ink_pose(info.pen_mask, info.tilt_x, info.tilt_y, info.rotation) {
+        store_pose(pose);
+    }
     Some(info.pen_flags)
 }
 
@@ -313,6 +351,7 @@ impl Drop for Monitor {
         PEN_END.store(encode_end(None), Ordering::Relaxed);
         PEN_ID.store(NO_PEN, Ordering::Relaxed);
         CONTACT_END.store(encode_end(None), Ordering::Relaxed);
+        clear_pose();
     }
 }
 

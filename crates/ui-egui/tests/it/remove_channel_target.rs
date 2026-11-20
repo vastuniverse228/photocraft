@@ -14,6 +14,17 @@ fn run(s: &mut Session, id: &str, p: &str) {
     s.execute(id, p.parse().unwrap()).unwrap();
 }
 
+/// The middle of the type layer's shown pixels, which is where the Type tool's hit test lands.
+fn glyph_point(s: &Session, id: LayerId) -> Option<(f64, f64)> {
+    let doc = &s.active().unwrap().doc;
+    let photocraft_doc::LayerContent::Text(text) = &doc.layer(id)?.content else { return None };
+    let bounds = text.cache.as_ref()?.content_bounds();
+    if bounds.is_empty() {
+        return None;
+    }
+    Some(((f64::from(bounds.x0) + f64::from(bounds.x1)) / 2.0, (f64::from(bounds.y0) + f64::from(bounds.y1)) / 2.0))
+}
+
 fn pixels(s: &Session, doc: usize, id: LayerId) -> Vec<f32> {
     let d = &s.documents()[doc].doc;
     d.layer(id).unwrap().surface().unwrap().read_region(d.bounds())
@@ -63,7 +74,7 @@ fn probe(input: Input) {
         // The app shares the harness's context, which is where the control channel's pointer input arrives.
         PhotocraftApp::with_context(cc.egui_ctx.clone(), a, Services::default())
     });
-    h.run_steps(4);
+    h.run_steps(6);
 
     let job = match h.state_mut().session.start("paint.remove", REMOVE.parse().unwrap()).unwrap() {
         Started::Job(id) => id,
@@ -73,9 +84,17 @@ fn probe(input: Input) {
         Input::None => {}
         Input::ControlPointer => {
             let ctx = h.ctx.clone();
-            let (req, _rx) = control::ControlRequest::new("ui.pointer", r#"{"tool":"type","events":[{"kind":"down","x":4,"y":14}]}"#.parse().unwrap());
-            let _ = control::handle(h.state_mut(), &ctx, &req);
+            // Fit first so the view the pointer converts through is the one the next frames keep.
+            let (fit, _rx) = control::ControlRequest::new("ui.set", r#"{"fit": true}"#.parse().unwrap());
+            let _ = control::handle(h.state_mut(), &ctx, &fit);
             h.run_steps(2);
+            let (hx, hy) = glyph_point(&h.state().session, text).expect("the type layer has shown pixels");
+            let params = format!(r#"{{"tool":"type","events":[{{"kind":"down","x":{hx},"y":{hy}}},{{"kind":"up","x":{hx},"y":{hy}}}]}}"#);
+            let (req, _rx) = control::ControlRequest::new("ui.pointer", params.parse().unwrap());
+            let reply = control::handle(h.state_mut(), &ctx, &req);
+            let accepted = matches!(&reply, control::Reply::Done(value) if value.get("ok").and_then(|v| v.as_bool()) == Some(true));
+            assert!(accepted, "the canvas took the pointer");
+            h.run_steps(4);
         }
     }
     let selected = if matches!(input, Input::None) { target } else { text };

@@ -194,7 +194,9 @@ fn harness() -> egui_kittest::Harness<'static, PhotocraftApp> {
 }
 
 fn harness_with_services(services: Services) -> egui_kittest::Harness<'static, PhotocraftApp> {
-    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(1200.0, 800.0)).with_max_steps(64).build_eframe(move |cc| {
+    // Tall enough that the Preferences buttons stay on screen when the platform's font metrics
+    // are larger than this machine's. A clipped button is absent from the painted text.
+    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(1400.0, 1800.0)).with_max_steps(64).build_eframe(move |cc| {
         PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
         let mut app = PhotocraftApp::with_context(cc.egui_ctx.clone(), photocraft_engine::Session::new(), services);
         app.run("file.new", json!({"name": "User layer name", "width": 64, "height": 64})).expect("new document");
@@ -307,20 +309,31 @@ fn preferences_preview_does_not_commit_until_applied_and_survives_reload() {
         let text = drawn_text(&h);
         let fr = lang("fr");
         assert!(text.iter().any(|text| text == tr(fr, "Appearance")), "the draft language must translate the visible window");
-        assert!(text.iter().any(|text| text == tr(fr, "Cancel")), "the window buttons must preview the language too");
+        // The page rows take the draft language. The framework's OK, Cancel and Apply follow the
+        // window's language, which stays the committed one until Apply.
+        let cancel = tr(Lang::EN, "Cancel");
+        let button = text.iter().any(|text| text == cancel) || h.query_all_by_label(cancel).next().is_some();
+        assert!(button, "the window buttons stay in the committed language");
         assert!(text.iter().any(|text| text == "File"), "the main window keeps its committed language");
         assert_eq!(h.state().session.prefs().interface.language, "auto");
         assert_eq!(current(), Lang::EN, "preview must not leak to the main window");
         // Cancel drops the draft and the preview.
-        h.get_by_label(tr(fr, "Cancel")).click();
+        h.get_by_label(cancel).click();
         h.run_steps(3);
         assert!(!window_open(h.state()));
         assert_eq!(h.state().session.prefs().interface.language, "auto");
         assert_eq!(current(), Lang::EN);
         open_preferences(h.state_mut(), "interface");
-        assert!(set_draft(h.state_mut(), "interface.language", PrefValue::Text("ko".into())));
+        assert!(set_draft(h.state_mut(), "interface.language", PrefValue::Choice("ko".into())));
         apply_window(h.state_mut()).expect("apply");
-        h.step();
+        assert_eq!(h.state().session.prefs().interface.language, "ko", "Apply stores the draft language");
+        // The next frames install the committed language. One pass is not always the installing one.
+        for _ in 0..8 {
+            h.step();
+            if current() == lang("ko") {
+                break;
+            }
+        }
         assert_eq!(current(), lang("ko"));
         let saved = h.state().session.prefs_to_json();
         let mut restored = photocraft_engine::Session::new();

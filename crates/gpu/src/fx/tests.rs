@@ -39,6 +39,43 @@ fn filled_shape_key_preserves_translation_but_detects_deformation() {
 }
 
 #[test]
+fn tile_shift_is_the_shared_tiles_of_a_whole_tile_move() {
+    use photocraft_color::PixelFormat;
+    let mut src = Surface::new(PixelFormat::RGBA8);
+    src.fill_rect(Rect::new(10, 20, 300, 400), &[0.2, 0.4, 0.6, 1.0]);
+    let snap = snapshot(&src);
+    let moved = src.translated(photocraft_geom::TILE_SIZE, -photocraft_geom::TILE_SIZE, src.content_bounds());
+    assert_eq!(tile_shift(&snap, &moved), Some((photocraft_geom::TILE_SIZE, -photocraft_geom::TILE_SIZE)));
+    let nudged = src.translated(3, -2, src.content_bounds());
+    assert_eq!(tile_shift(&snap, &nudged), None);
+    let old = Rect::new(0, 0, 40, 40);
+    let place = [Some(src.pixel_placement()), None];
+    let tiles = [Some(snapshot(&src)), None];
+    assert!(sources_follow(&tiles, &place, Some(&moved), None, old, old.translate(photocraft_geom::TILE_SIZE, -photocraft_geom::TILE_SIZE), true));
+    // A 1 px move rebuilds the tiles. The placement is what lets the effect maps follow.
+    assert_eq!(nudged.moved_by(src.pixel_placement()), Some((3, -2)));
+    assert!(sources_follow(&tiles, &place, Some(&nudged), None, old, old.translate(3, -2), true));
+    // A filled shape still compares coverage: the path, not the cached pixels, is the outline.
+    assert!(!sources_follow(&tiles, &place, Some(&nudged), None, old, old.translate(3, -2), false));
+    assert!(sources_follow(&tiles, &place, Some(&moved), None, old, old.translate(photocraft_geom::TILE_SIZE, -photocraft_geom::TILE_SIZE), false));
+    let mut painted = nudged.clone();
+    painted.fill_rect(Rect::new(12, 22, 14, 24), &[1.0, 0.0, 0.0, 1.0]);
+    assert!(!sources_follow(&tiles, &place, Some(&painted), None, old, old.translate(3, -2), true));
+    // The next small move is measured from the surface we just cached, not from the original.
+    let mid_place = [Some(nudged.pixel_placement()), None];
+    let again = nudged.translated(1, 1, nudged.content_bounds());
+    assert!(sources_follow(&[Some(snapshot(&nudged)), None], &mid_place, Some(&again), None, old, old.translate(1, 1), true));
+    assert!(!sources_follow(&tiles, &place, Some(&again), None, old, old.translate(1, 1), true));
+    // Content and mask have to move together.
+    let mask = src.translated(0, 4, src.content_bounds());
+    let both = [Some(src.pixel_placement()), Some(src.pixel_placement())];
+    let both_tiles = [Some(snapshot(&src)), Some(snapshot(&src))];
+    assert!(!sources_follow(&both_tiles, &both, Some(&nudged), Some(&mask), old, old.translate(3, -2), true));
+    let mask = src.translated(3, -2, src.content_bounds());
+    assert!(sources_follow(&both_tiles, &both, Some(&nudged), Some(&mask), old, old.translate(3, -2), true));
+}
+
+#[test]
 fn programs_key_on_geometry_not_colour() {
     let light = GlobalLight::default();
     let Effect::DropShadow(mut s) = Effect::default_drop_shadow() else { unreachable!() };

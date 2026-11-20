@@ -106,6 +106,9 @@ pub fn open_print(app: &mut PhotocraftApp) -> DialogId {
                 fields.set(k.clone(), value);
             }
         }
+        // `printer` lives on the panel's settings, and the fields the tests and scripts read.
+        // The loop above skips it with the other settings keys.
+        write_settings(&mut fields, &state.settings);
     }
     // A custom paper (an array in points) is the `custom` choice with its two sizes; a named paper
     // also seeds the sizes, so choosing Custom starts from the paper that was shown.
@@ -294,10 +297,14 @@ fn refresh_printers(app: &mut PhotocraftApp, ctx: &egui::Context) {
         Some(list) => (list, true),
         None => (take_printer_lists(app), false),
     };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let _ = tx.send(list);
     if let Some(dialog) = app.framework.dialogs.get_mut::<HostedPrint>() {
-        dialog.listen(rx);
+        // An empty list from a busy spooler is not "no printers". `State::poll` would replace the
+        // remembered printer with the default, or with nothing. Ask again once the spooler is free.
+        if listed || !list.is_empty() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = tx.send(list);
+            dialog.listen(rx);
+        }
         if !listed {
             dialog.request_refresh();
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

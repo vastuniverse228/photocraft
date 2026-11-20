@@ -53,5 +53,8 @@ pub(crate) const FLUSH_WORK: u64 = 1 << 30;
 /// two backend command buffers for each (a render pass and its barrier pre-pass), and Metal
 /// treats more than 4096 outstanding ones as a lost device: a refresh of a document with a few
 /// hundred layers reached that inside a single page cell (P12, "pc_compose_uniforms is
-/// invalid"), where the work and byte limits above never trigger.
-pub(crate) const FLUSH_OPS: u32 = 1000;
+/// invalid"), where the work and byte limits above never trigger. 128 keeps a 150-layer
+/// stack — and a styled stack, several passes per layer — from sitting in one submit on a
+/// laptop GPU (an 8 GB card or the integrated GPU beside it), which the OS resets when a
+/// single command buffer runs too long.
+pub(crate) const FLUSH_OPS: u32 = 128;

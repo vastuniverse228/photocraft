@@ -52,15 +52,28 @@ impl Compositor {
             && !region.is_empty()
         {
             // Moved by whole pixels: maps are computed relative to the region, so if the shape
-            // moved unchanged with it, every map is still exact.
-            let v = fx::shape(doc, layer, region);
-            if let Some(e) = self.fx.get_mut(&key)
-                && v == e.shape_cpu
-            {
-                e.region = region;
-                rebuild = false;
+            // moved unchanged with it, every map is still exact. A move by whole tiles shares
+            // the tiles. A smaller move rebuilds them, and the surface's placement says they are
+            // still the same pixels, except a filled shape, whose outline is drawn from the path
+            // and can change by less than a pixel. Anything else still reads the shape.
+            let trust_placement = photocraft_compose::effect_outline(layer).is_none();
+            let shifted = self.fx.get(&key).is_some_and(|e| fx::sources_follow(&e.tiles, &e.placed, content_src, mask_src, old, region, trust_placement));
+            if shifted {
+                if let Some(e) = self.fx.get_mut(&key) {
+                    e.region = region;
+                    rebuild = false;
+                }
+            } else {
+                stats.fx_shape_reads += 1;
+                let v = fx::shape(doc, layer, region);
+                if let Some(e) = self.fx.get_mut(&key)
+                    && v == e.shape_cpu
+                {
+                    e.region = region;
+                    rebuild = false;
+                }
+                photocraft_raster::scratch::give(v);
             }
-            photocraft_raster::scratch::give(v);
         }
         if rebuild {
             let shape = Tex::map(device, "pc_fx_shape", region, MAP32);
@@ -72,6 +85,7 @@ impl Compositor {
                     region,
                     shape_key,
                     tiles: [None, None],
+                    placed: [None, None],
                     _pin: if is_group {
                         let mut pin = Vec::new();
                         fx::group_key(layer, &doc.global_light, &mut |t| pin.push(Arc::downgrade(t)));
@@ -96,6 +110,7 @@ impl Compositor {
         e.stamp = stamp;
         e.doc = doc.id;
         e.tiles = [content_src.map(fx::snapshot), mask_src.map(fx::snapshot)];
+        e.placed = [content_src.map(photocraft_raster::Surface::pixel_placement), mask_src.map(photocraft_raster::Surface::pixel_placement)];
         if region.is_empty() {
             return Ok(());
         }
@@ -105,6 +120,7 @@ impl Compositor {
         // Shape over the damage (compose's own alpha).
         if !damage.is_empty() {
             stats.fx_shapes += 1;
+            stats.fx_shape_reads += 1;
             let v = fx::shape(doc, layer, damage);
             fx::paste(&mut e.shape_cpu, region, damage, &v);
             e.shape.write_r32(queue, region, damage, &v);
